@@ -2,9 +2,9 @@
 
 # 👟 Shoe Shop
 
-**A polyglot, cloud-native e-commerce reference platform — engineered as the 2026 successor to Weaveworks Sock Shop.**
+**A polyglot, cloud-native e-commerce platform — purpose-built for Observability, Chaos Engineering, and AI-driven SRE research.**
 
-*Built ground-up for Observability, Chaos Engineering, and AI-driven SRE research.*
+*Six languages, one request path, telemetry-rich by default.*
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-7c3aed)](https://opentelemetry.io/)
@@ -34,42 +34,42 @@
 
 ## 🎯 Why Shoe Shop?
 
-For nearly a decade, **Weaveworks Sock Shop** was the de-facto reference application for demoing cloud-native tooling — service meshes, observability stacks, chaos tools. But the project has been effectively unmaintained since ~2020. It ships:
+Cloud-native systems in 2026 are **polyglot, distributed, and observable-by-design** — yet the skills to operate them are usually learned on trivial sample apps that emit shallow telemetry and never fail in interesting ways. Shoe Shop is the opposite: a complete, runnable, production-shaped platform built around the problems that actually make distributed systems hard.
 
-- ❌ Legacy instrumentation (Zipkin via OpenTracing, retired in favor of OpenTelemetry)
-- ❌ Outdated runtimes (Java 8, Node 10, Go 1.13)
-- ❌ Container patterns that predate distroless/rootless/multi-arch as norms
-- ❌ No native OTel, no profiling, no eBPF, no Gateway API, no GitOps wiring
-- ❌ No realistic incident scenarios — only ad-hoc chaos
+It is an open-source e-commerce platform engineered as a **sandbox for modern operations**:
 
-**Shoe Shop is the modern, opinionated rewrite.** Every architectural choice is justified by where the cloud-native ecosystem actually is in 2026, and every component emits structured, correlated telemetry by default.
+- **Polyglot orchestration** — six languages cooperating across a single request path, so distributed tracing has something real to correlate.
+- **OpenTelemetry everywhere** — every service emits structured, correlated logs, metrics, traces, and profiles by default, following OTel semantic conventions.
+- **Failure as a first-class feature** — built-in, repeatable incident scenarios with known root causes, not just ad-hoc fault injection.
+- **Production-grade patterns** — Gateway API ingress, gRPC plus event-driven messaging, GitOps delivery, and signed multi-arch images.
+
+Nothing here is a toy. The telemetry is rich enough to debug with, to benchmark tools against, and — critically — to train an AI on.
 
 ---
 
 ## 🚀 Project Vision
 
-Shoe Shop has two missions, both equally weighted:
+Shoe Shop pursues two missions, weighted equally:
 
-### Mission 1 — A canonical reference for cloud-native tooling vendors and learners
+### Mission 1 — A definitive open-source sandbox for observability & reliability engineering
 
-A platform that vendors, educators, and engineers can deploy to a fresh cluster in minutes and use to demo, benchmark, or learn:
+A platform any engineer, educator, or tool author can stand up in minutes to explore the hard parts of running distributed systems:
 
-- Distributed tracing across **6+ languages**
-- Service mesh behavior under realistic traffic
-- Log/metric/trace/profile correlation in Grafana
-- Chaos experiments with deterministic blast radius
-- GitOps and progressive delivery patterns
+- Distributed tracing across **6 languages**
+- Log / metric / trace / profile correlation in a single pane of glass
+- Reliability experiments with deterministic blast radius
+- Gateway API, GitOps, and progressive-delivery patterns under realistic traffic
 
 ### Mission 2 — A high-fidelity telemetry generator for **Project 2: AI SRE**
 
-This is the load-bearing constraint. The telemetry Shoe Shop emits must be **rich, correlated, and incident-realistic** enough to train and evaluate an AI Site Reliability Engineer. Concretely that means:
+This is the load-bearing constraint. The telemetry Shoe Shop emits must be **rich, correlated, and incident-realistic** enough to train and evaluate an AI Site Reliability Engineer. Concretely:
 
 - Every span, log, and metric carries `trace_id` and `service.name` per OTel semconv
-- Incidents are **scenarios**, not random pod-kills — they have a root cause, a propagation path, and observable symptoms
-- Golden signals (latency / traffic / errors / saturation) are exposed per-service, per-endpoint
-- The system supports recording labeled incident windows so the AI can be trained on `(telemetry, root_cause)` pairs
+- Incidents are **scenarios** — a root cause, a propagation path, and observable symptoms — never random noise
+- Golden signals (latency / traffic / errors / saturation) are exposed per-service and per-endpoint
+- Labeled incident windows are recorded as `(telemetry, root_cause)` pairs for supervised training
 
-If a design decision helps Mission 1 but corrupts Mission 2, Mission 2 wins.
+> **Tie-breaker:** if a design choice helps Mission 1 but corrupts Mission 2, Mission 2 wins.
 
 ---
 
@@ -188,7 +188,7 @@ Polyglot is deliberate: it forces the observability layer to prove cross-languag
 |----------|-------|-----|
 | **gRPC** (Protobuf) | Service ↔ service | Strong contracts, generated clients in every language, native streaming, OTel-instrumented out of the box. |
 | **REST/JSON** | BFF ↔ Frontend, external webhooks | Browser-friendly, debuggable, no codegen friction on the edge. |
-| **NATS JetStream** | Event-driven flows | Modern, lightweight (single binary), at-least-once with consumer ack, OTel propagation supported. Picked over Kafka/Redpanda for footprint; Redpanda is a recommended drop-in if users want Kafka semantics. |
+| **NATS JetStream** | Event-driven flows | Modern, lightweight (single binary), at-least-once with consumer ack, OTel propagation supported. Chosen for footprint and replayable streams; Redpanda is a documented drop-in for teams that want Kafka semantics. |
 
 ### Schema strategy
 - **`/proto`** is the single source of truth for service contracts.
@@ -201,10 +201,10 @@ Polyglot is deliberate: it forces the observability layer to prove cross-languag
 |-------|---------|-----|
 | **PostgreSQL 16** | Catalogue, Orders, Payment, Users, Shipping, Inventory | One battle-tested OLTP store. Per-service schema or per-service database — not "shared DB" anti-pattern. |
 | **Redis 7** | Cart, rate-limiting | Cart is genuinely K/V; Redis is the right tool. |
-| **Meilisearch** | Catalogue search | Open-source, OTel-instrumentable, much simpler ops than Elasticsearch for a demo workload. Typesense is a drop-in alternative. |
+| **Meilisearch** | Catalogue search | Open-source, OTel-instrumentable, much simpler ops than Elasticsearch for this workload. Typesense is a drop-in alternative. |
 | **NATS JetStream** | Event bus + KV for ephemeral state | See above. |
 
-Every datastore is run in-cluster for hermetic local dev. No cloud SaaS dependencies required to run the full stack.
+Every datastore runs in-cluster for hermetic local dev. No cloud SaaS dependencies are required to run the full stack.
 
 ---
 
@@ -235,7 +235,7 @@ flowchart LR
 | **Profiles** | **Grafana Pyroscope** | Continuous profiling closes the "I see the slow trace, now show me the CPU" loop. Critical for the AI SRE training data. |
 | **UI / Alerts** | **Grafana OSS 11** + Alertmanager | Dashboards-as-code via Grafonnet / Foundation SDK. Alerts as code via Prometheus rules. |
 
-> **⚠️ Local vs. cluster footprint.** The table above describes the **cluster/prod** topology. **Locally**, this entire stack is collapsed into the single **`grafana/otel-lgtm`** image (Grafana + Prometheus + Loki + Tempo, ~400 MB) plus **one** OTel Collector. **Pyroscope** runs as an **opt-in** sidecar container, toggled on only when profiling memory-leak scenarios for the AI SRE. Separate **Mimir**, the two-tier agent+gateway Collector, and standalone Loki/Tempo are reserved for the cluster path. See [ADR-0001](#-adr-0001--local-dev--resource-constraints-locked).
+> **⚠️ Local vs. cluster footprint.** The table above describes the **cluster/prod** topology. **Locally**, this entire stack is collapsed into the single **`grafana/otel-lgtm`** image (Grafana + Prometheus + Loki + Tempo, ~400 MB) plus **one** OTel Collector. **Pyroscope** runs as an **opt-in** sidecar container, toggled on only when profiling memory-leak scenarios for the AI SRE. Separate **Mimir**, the two-tier agent+gateway Collector, and standalone Loki/Tempo are reserved for the cluster path. See [Local Development Promise](#-local-development-promise).
 
 ### Instrumentation strategy
 - **OpenTelemetry SDKs** in every service — no vendor agents.
@@ -256,7 +256,7 @@ flowchart LR
 
 ## 💥 Chaos & Incident Engineering
 
-This is where Shoe Shop differs sharply from Sock Shop. We don't just inject random pod kills — we orchestrate **realistic, labeled, repeatable incident scenarios**.
+Chaos in Shoe Shop is **never random pod-killing.** The platform orchestrates realistic, labeled, repeatable incident scenarios — each with a known root cause and an observable symptom chain — so failures are something you can study, reproduce, and learn from.
 
 ### The three layers of chaos
 
@@ -291,7 +291,7 @@ Each scenario:
 
 ## 🎨 UI/UX Approach
 
-The frontend deserves the same rigor as the backend. A demo that *looks* like a demo undermines the project's credibility.
+The frontend deserves the same rigor as the backend. A storefront that *looks* like a demo undermines the project's credibility.
 
 ### Stack
 - **Next.js 15** (App Router, React Server Components, Partial Prerendering)
@@ -305,7 +305,7 @@ The frontend deserves the same rigor as the backend. A demo that *looks* like a 
 Think **Allbirds / On / Veja** — clean editorial layout, generous whitespace, large product photography, no skeuomorphic gradients, no stock-bootstrap aesthetic. Dark mode first-class.
 
 ### Why this matters beyond aesthetics
-- **Realistic frontend telemetry**: SSR + RSC + Client Components produce a non-trivial trace shape (server-side fetch waterfalls, client-side hydration, partial revalidation). Sock Shop's vanilla AngularJS frontend can't generate this.
+- **Realistic frontend telemetry**: SSR + RSC + Client Components produce a non-trivial trace shape — server-side fetch waterfalls, client-side hydration, partial revalidation — that simpler server-rendered UIs never generate.
 - **Real Core Web Vitals data**: We ship `web-vitals` → OTel → Grafana, so the AI SRE can correlate backend incidents with frontend UX degradation.
 - **Accessible by default**: WCAG 2.2 AA. Lighthouse a11y score ≥ 95 is a CI gate.
 
@@ -413,55 +413,40 @@ shoe-shop/
 
 ## 🛠 Local Development Promise
 
-> *(No code yet — this section documents the contract the eventual code must satisfy.)*
+> *(Blueprint phase — this section is the contract the code must satisfy.)*
 
-Three escalating tiers, each with a hard time budget:
+Shoe Shop is **resource-first**: it must run on a developer laptop, not just a cluster. The reference envelope is a constrained-but-common machine — **16 GB RAM with Docker/WSL2 capped at 8 GB**. At full load the containerized stack uses ~6.5 GB, leaving only ~1.5 GB of headroom — which the platform's own memory-leak and saturation scenarios can exhaust. Every decision below serves that reality.
 
-| Tier | Tool | Promise | Time budget |
-|------|------|---------|-------------|
-| **L0 — Try it** | `docker compose up` | Full stack + Grafana running on `localhost`. No K8s required. | ≤ 5 min cold |
-| **L1 — Hack on it** | `tilt up` (against k3d / kind) | Live-reload on file change, port-forwarded UIs, dev-time tracing on. | ≤ 8 min cold |
-| **L2 — Cluster-grade** | `helm install` (any conformant K8s) | Production-shape topology, HPA, PDBs, NetworkPolicies, mesh-optional. | depends on cluster |
+### Dual-Path workflow
+One command interface, two runtimes:
 
-A `Taskfile.yml` at the root exposes the same verbs across all tiers: `task up`, `task seed`, `task chaos:run cascading-timeout`, `task obs:open`.
+- **`task dev` (Hybrid)** — infra + observability run in Docker; you run the single service you're editing natively for instant reloads. The daily driver.
+- **`task up` (Full compose)** — everything containerized, for parity, demos, and reliability scenarios.
 
----
-
-## ⚙️ ADR-0001 — Local Dev & Resource Constraints (LOCKED)
-
-> The first project decision is recorded inline because it shapes every file in v0.1. Full record will live at `docs/adr/0001-local-dev-resource-constraints.md`.
-
-**Context — reference hardware envelope.** Shoe Shop must run on a developer laptop, not just a cluster. Our reference target is a constrained but common machine: **16 GB system RAM**, with **Docker via WSL2 hard-capped at 8 GB**. At full load the containerized stack uses ~6.5 GB, leaving only **~1.5 GB headroom** — which the project's own memory-leak/saturation chaos can exhaust and freeze the VM. Every decision below falls out of that single fact.
-
-**Decisions:**
-
-| # | Question | Ruling |
-|---|----------|--------|
-| 1 | Dev model | **Dual-Path Taskfile.** `task dev` = Hybrid (infra+obs in Docker, edited services native + hot-reload); `task up` = full containerized parity; chaos implies the orchestrated path. The two missions have different runtime needs, so both paths are mandatory. |
-| 2 | Local orchestrator | **Compose by default; k3d (never kind) for chaos.** kind's per-node kubelet+etcd costs ~1–1.5 GB; k3d's sqlite-backed control plane is ~0.5–0.8 GB. Chaos Mesh + real `OOMKilled`/eviction telemetry need K8s, so k3d earns its tax only on the chaos path. |
-| 3 | Database | **Raw Postgres 16, database-per-service.** No Supabase — managed DB is a chaos black box (can't exhaust pools, inject I/O latency, reproduce DB incidents) and self-hosted Supabase is ~9 containers. Both outcomes starve the AI SRE. `postgres_exporter` for metrics. |
-| 4 | Message broker | **NATS JetStream.** ~40 MB vs Kafka's ~1 GB JVM; sub-second restart (good chaos action); replayable streams (deterministic incident regen); W3C trace propagation. RabbitMQ rejected (queue, not replayable log). Redpanda kept as a documented Kafka-API swap. |
-| 5 | Service count | **11 boundaries, configurable topology.** The count is a *feature* (deep cross-language traces, room for cascades, a home per language), not domain modeling. RAM is managed with profiles, not by collapsing services. |
-
-**Locked forks (this session):**
-
-| Fork | Decision |
-|------|----------|
-| Default local topology | **`core` profile** (frontend, bff, catalogue, cart, orders, payment) via **Hybrid `task dev`** — full end-to-end checkout trace at minimum RAM |
-| Local observability | **`grafana/otel-lgtm` bundle** (~400 MB) baseline + **opt-in Pyroscope** toggle for memory-leak training |
-| Auth provider | **Zitadel** (Go, ~200 MB) over Keycloak's JVM |
-
-**Topology dial (Compose/k3d profiles):**
+### Topology profiles (the RAM dial)
 
 | Profile | Services | Target |
 |---------|----------|--------|
-| `core` *(default)* | 6 — frontend, bff, catalogue, cart, orders, payment | Daily dev, tightest RAM |
-| `full` | all 11 | Demo, integration, chaos |
-| `lean-jvm` | 11, Orders/Shipping `-Xmx192m` | Squeeze the JVMs |
+| `core` *(default)* | 6 — frontend, bff, catalogue, cart, orders, payment | Daily dev; full checkout trace at minimum RAM |
+| `full` | all 11 + Zitadel auth | Demos, integration, chaos |
+| `lean-jvm` | full, Orders/Shipping heaps capped | Tightest budget |
 
-**Standing mandates:**
-- **Every container gets a hard memory limit** (`mem_limit` / `resources.limits.memory`). This converts a WSL2 freeze into a clean, *observable* OOMKill — which is also better AI-SRE training data.
-- **High-volume telemetry generation targets a bigger box / cheap cloud k3s node.** Local k3d is for *authoring and validating* chaos scenarios on a subset, not sustained full-stack load.
+### Escalating tiers
+
+| Tier | Command | Promise | Budget |
+|------|---------|---------|--------|
+| **L0 — Try it** | `task up:core` | Platform + core services + Grafana on `localhost`. No K8s. | ≤ 5 min cold |
+| **L1 — Hack on it** | `task dev` + native service | Live-reload, dev-time tracing on. | ≤ 8 min cold |
+| **L2 — Cluster-grade** | `helm install` on k3d / any K8s | Production-shape topology, HPA, PDBs, NetworkPolicies, mesh-optional. | depends on cluster |
+
+A root `Taskfile.yml` exposes the same verbs across tiers: `task up`, `task seed`, `task chaos:run cascading-timeout`, `task obs`.
+
+### Standing mandates
+- **Every container has a hard memory limit** — turns an out-of-memory event into a clean, observable restart instead of freezing the host, and yields better AI-SRE training data.
+- **Local observability is the `grafana/otel-lgtm` bundle** (~400 MB) with **opt-in Pyroscope**; the separated LGTM+P stack is reserved for the cluster path.
+- **Local Kubernetes is k3d** (not kind) when chaos tooling needs a real control plane; sustained high-volume telemetry generation targets a larger host or a cheap cloud node.
+- **Raw Postgres, database-per-service** (no managed DB), and **NATS JetStream** as the broker — both chosen so failures stay reproducible and inspectable.
+- **Architecture decisions are recorded as ADRs** under `docs/adr/` so every trade-off is auditable. ADR-0001 (local dev & resource constraints) is the first.
 
 ---
 
@@ -500,6 +485,6 @@ Contributions are welcomed once the v0.1 scaffold is in place. The contribution 
 
 **Shoe Shop is a love letter to the people running production at 3 a.m.**
 
-*Built so the next generation of tools — and the AI SREs that will partner with them — have something real to learn from.*
+*Built so the tools — and the AI SREs that will partner with them — have something real to learn from.*
 
 </div>
