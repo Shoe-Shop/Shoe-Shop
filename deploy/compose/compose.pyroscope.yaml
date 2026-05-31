@@ -1,0 +1,14 @@
+# Shoe Shop — opt-in continuous profiling overlay.
+# Start with: `task profiling:up` (adds Pyroscope to the running stack).
+# Used for memory-leak / saturation scenarios when training the AI SRE.
+# Grafana datasource wiring for Pyroscope is added in the observability milestone.
+
+services:
+  pyroscope:
+    image: grafana/pyroscope:${PYROSCOPE_TAG:-latest}
+    container_name: shoeshop-pyroscope
+    restart: unless-stopped
+    ports:
+      - "${PYROSCOPE_PORT:-4040}:4040"
+    mem_limit: 256m
+    networks: [shoeshop]

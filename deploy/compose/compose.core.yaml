@@ -1,0 +1,119 @@
+# Shoe Shop — CORE profile overlay (merged on top of compose.yaml).
+# The 6 services needed for an end-to-end checkout trace.
+#
+# Each service currently runs a `traefik/whoami` STUB so the topology, ports,
+# memory limits, and dependency graph are real and runnable today. When a
+# service's code lands (v0.2+), delete the `image:` line and uncomment the
+# matching `build:` block — nothing else changes.
+
+x-stub: &stub
+  image: traefik/whoami:${WHOAMI_TAG:-v1.10.2}
+  restart: unless-stopped
+  networks: [shoeshop]
+
+services:
+  # ── Frontend — TypeScript · Next.js 15 ───────────────────────────
+  frontend:
+    <<: *stub
+    # build: { context: ../../services/frontend }
+    container_name: shoeshop-frontend
+    environment:
+      OTEL_SERVICE_NAME: frontend
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${FRONTEND_PORT:-9000}:80"
+    depends_on:
+      bff: { condition: service_started }
+    mem_limit: 256m
+
+  # ── BFF — TypeScript · Hono (trace root) ─────────────────────────
+  bff:
+    <<: *stub
+    # build: { context: ../../services/bff }
+    container_name: shoeshop-bff
+    environment:
+      OTEL_SERVICE_NAME: bff
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${BFF_PORT:-9001}:80"
+    depends_on:
+      catalogue: { condition: service_started }
+      cart: { condition: service_started }
+      orders: { condition: service_started }
+      payment: { condition: service_started }
+    mem_limit: 128m
+
+  # ── Catalogue — Go · Chi (Postgres + Meilisearch) ────────────────
+  catalogue:
+    <<: *stub
+    # build: { context: ../../services/catalogue }
+    container_name: shoeshop-catalogue
+    environment:
+      OTEL_SERVICE_NAME: catalogue
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${CATALOGUE_PORT:-9002}:80"
+    depends_on:
+      # Real service: switch these to condition: service_healthy
+      postgres: { condition: service_started }
+      meilisearch: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 128m
+
+  # ── Cart — TypeScript · Fastify (Redis) ──────────────────────────
+  cart:
+    <<: *stub
+    # build: { context: ../../services/cart }
+    container_name: shoeshop-cart
+    environment:
+      OTEL_SERVICE_NAME: cart
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${CART_PORT:-9003}:80"
+    depends_on:
+      redis: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 160m
+
+  # ── Orders — Java 21 · Spring Boot (Postgres + NATS) ─────────────
+  orders:
+    <<: *stub
+    # build: { context: ../../services/orders }
+    container_name: shoeshop-orders
+    environment:
+      OTEL_SERVICE_NAME: orders
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${ORDERS_PORT:-9004}:80"
+    depends_on:
+      postgres: { condition: service_started }
+      nats: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 384m
+
+  # ── Payment — Rust · Axum (Postgres) ─────────────────────────────
+  payment:
+    <<: *stub
+    # build: { context: ../../services/payment }
+    container_name: shoeshop-payment
+    environment:
+      OTEL_SERVICE_NAME: payment
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${PAYMENT_PORT:-9005}:80"
+    depends_on:
+      postgres: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 96m

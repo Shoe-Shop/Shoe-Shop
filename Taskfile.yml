@@ -1,0 +1,166 @@
+# Shoe Shop — Dual-Path task runner (https://taskfile.dev)
+#
+# Two paths, one interface (see README → ADR-0001):
+#   • Hybrid dev   →  `task dev`     (infra+obs in Docker, edited services native)
+#   • Full compose →  `task up:*`    (everything containerized)
+#
+# Profiles (RAM dial):
+#   core      = 6 services  (frontend, bff, catalogue, cart, orders, payment)
+#   full      = all 11 + Zitadel auth
+#   lean-jvm  = full, but Orders/Shipping heaps capped for the tightest budget
+#
+# Prereqs: Docker Desktop (WSL2), the `task` CLI. Run `task doctor` to verify.
+
+version: '3'
+
+vars:
+  COMPOSE_DIR: deploy/compose
+  ENVFILE: --env-file deploy/compose/.env
+  BASE: -f deploy/compose/compose.yaml
+  CORE: -f deploy/compose/compose.core.yaml
+  FULL: -f deploy/compose/compose.full.yaml
+  LEANJVM: -f deploy/compose/compose.lean-jvm.yaml
+  PYRO: -f deploy/compose/compose.pyroscope.yaml
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  # ── First-time setup ───────────────────────────────────────────────
+  _ensure-env:
+    internal: true
+    cmds:
+      - cp {{.COMPOSE_DIR}}/.env.example {{.COMPOSE_DIR}}/.env
+      - 'echo "→ Created {{.COMPOSE_DIR}}/.env from .env.example (edit to customize)"'
+    status:
+      - test -f {{.COMPOSE_DIR}}/.env
+
+  setup:
+    desc: "First-time setup: create .env and pre-pull images"
+    cmds:
+      - task: _ensure-env
+      - task: pull
+
+  doctor:
+    desc: "Check prerequisites: Docker daemon + compose plugin"
+    silent: true
+    cmds:
+      - 'docker info >/dev/null 2>&1 && echo "✓ Docker daemon reachable" || echo "✗ Docker not reachable — start Docker Desktop"'
+      - 'docker compose version >/dev/null 2>&1 && echo "✓ docker compose plugin present" || echo "✗ docker compose plugin missing"'
+
+  config:
+    desc: "Validate & render the merged Compose config (full profile)"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.FULL}} config
+
+  # ── Bring-up ───────────────────────────────────────────────────────
+  dev:
+    desc: "Hybrid dev: platform (infra+obs) in Docker; run the service you edit natively"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} up -d --remove-orphans
+      - 'echo ""'
+      - 'echo "Platform up. Point natively-run services at these backends:"'
+      - 'echo "  OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317"'
+      - 'echo "  Postgres: localhost:5432   Redis: localhost:6379   NATS: localhost:4222"'
+      - task: obs
+
+  up:
+    desc: "Start ONLY the platform backbone (Postgres, Redis, Meilisearch, NATS, Grafana/LGTM)"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} up -d --remove-orphans
+      - task: obs
+
+  up:core:
+    desc: "Start platform + the 6 CORE services (default daily profile)"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} up -d --remove-orphans
+      - task: obs
+
+  up:full:
+    desc: "Start platform + ALL 11 services + Zitadel auth"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.FULL}} up -d --remove-orphans
+      - task: obs
+
+  up:lean-jvm:
+    desc: "Like up:full but with Orders/Shipping JVM heaps capped (tightest RAM)"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.FULL}} {{.LEANJVM}} up -d --remove-orphans
+      - task: obs
+
+  # ── Opt-in continuous profiling ────────────────────────────────────
+  profiling:up:
+    desc: "Start opt-in Pyroscope profiling (for memory-leak scenarios)"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.PYRO}} up -d pyroscope
+      - 'echo "Pyroscope → http://localhost:4040"'
+
+  profiling:down:
+    desc: "Stop Pyroscope"
+    cmds:
+      - docker compose {{.BASE}} {{.PYRO}} rm -sf pyroscope
+
+  # ── Day-to-day ─────────────────────────────────────────────────────
+  ps:
+    desc: "Show status of all Shoe Shop containers"
+    cmds:
+      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} ps
+
+  logs:
+    desc: "Tail logs. Optionally a service: task logs -- catalogue"
+    cmds:
+      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} logs -f --tail=100 {{.CLI_ARGS}}
+
+  restart:
+    desc: "Restart service(s): task restart -- catalogue"
+    cmds:
+      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} restart {{.CLI_ARGS}}
+
+  pull:
+    desc: "Pre-pull all container images"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.FULL}} {{.PYRO}} pull
+
+  obs:
+    desc: "Print observability + service endpoints"
+    silent: true
+    cmds:
+      - 'echo ""'
+      - 'echo "Grafana (LGTM):     http://localhost:3000"'
+      - 'echo "OTLP gRPC / HTTP:   localhost:4317 / 4318"'
+      - 'echo "Meilisearch:        http://localhost:7700"'
+      - 'echo "Pyroscope (opt-in): http://localhost:4040   (task profiling:up)"'
+
+  # ── Stubs — implemented in later milestones ────────────────────────
+  seed:
+    desc: "Seed demo data (stub — lands with the services in v0.2)"
+    cmds:
+      - 'echo "seed: not yet implemented — services arrive in v0.2"'
+
+  chaos:run:
+    desc: "Run a reliability scenario by name (stub — lands in v0.6)"
+    cmds:
+      - 'echo "chaos:run {{.CLI_ARGS}}: not yet implemented — scenario tooling arrives in v0.6"'
+
+  # ── Teardown ───────────────────────────────────────────────────────
+  down:
+    desc: "Stop and remove containers (keeps data volumes)"
+    cmds:
+      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} {{.PYRO}} down --remove-orphans
+
+  nuke:
+    desc: "Stop everything AND delete data volumes. Destructive."
+    prompt: "This deletes all local data volumes (Postgres, Meili, NATS). Continue?"
+    cmds:
+      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} {{.PYRO}} down -v --remove-orphans

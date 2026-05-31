@@ -1,0 +1,123 @@
+# Shoe Shop — FULL profile overlay.
+# Used as: compose.yaml + compose.core.yaml + compose.full.yaml
+# Adds the remaining 5 services + Zitadel auth (total 11 services).
+
+x-stub: &stub
+  image: traefik/whoami:${WHOAMI_TAG:-v1.10.2}
+  restart: unless-stopped
+  networks: [shoeshop]
+
+services:
+  # ── Users — Python · FastAPI (Postgres + Zitadel OIDC) ───────────
+  users:
+    <<: *stub
+    # build: { context: ../../services/users }
+    container_name: shoeshop-users
+    environment:
+      OTEL_SERVICE_NAME: users
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${USERS_PORT:-9006}:80"
+    depends_on:
+      postgres: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 160m
+
+  # ── Shipping — Kotlin · Ktor (Postgres + NATS) ───────────────────
+  shipping:
+    <<: *stub
+    # build: { context: ../../services/shipping }
+    container_name: shoeshop-shipping
+    environment:
+      OTEL_SERVICE_NAME: shipping
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${SHIPPING_PORT:-9007}:80"
+    depends_on:
+      postgres: { condition: service_started }
+      nats: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 384m
+
+  # ── Inventory — Go · gRPC-first (Postgres) ───────────────────────
+  inventory:
+    <<: *stub
+    # build: { context: ../../services/inventory }
+    container_name: shoeshop-inventory
+    environment:
+      OTEL_SERVICE_NAME: inventory
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${INVENTORY_PORT:-9008}:80"
+    depends_on:
+      postgres: { condition: service_started }
+      nats: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 128m
+
+  # ── Recommendation — Python · FastAPI + ONNX Runtime ─────────────
+  recommendation:
+    <<: *stub
+    # build: { context: ../../services/recommendation }
+    container_name: shoeshop-recommendation
+    environment:
+      OTEL_SERVICE_NAME: recommendation
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${RECOMMENDATION_PORT:-9009}:80"
+    depends_on:
+      postgres: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 320m
+
+  # ── Notification — Go · NATS subscriber (stateless) ──────────────
+  notification:
+    <<: *stub
+    # build: { context: ../../services/notification }
+    container_name: shoeshop-notification
+    environment:
+      OTEL_SERVICE_NAME: notification
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+    ports:
+      - "${NOTIFICATION_PORT:-9010}:80"
+    depends_on:
+      nats: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    mem_limit: 96m
+
+  # ── Zitadel — OIDC auth provider (Go, ~200MB). Manages its own
+  #    database + role via start-from-init against shared Postgres. ──
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:${ZITADEL_TAG:-latest}
+    container_name: shoeshop-zitadel
+    restart: unless-stopped
+    command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY:-MasterkeyNeedsToHave32Characters}" --tlsMode disabled'
+    environment:
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_EXTERNALPORT: ${ZITADEL_PORT:-8080}
+      ZITADEL_DATABASE_POSTGRES_HOST: postgres
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: ${POSTGRES_USER:-postgres}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+    ports:
+      - "${ZITADEL_PORT:-8080}:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+    mem_limit: 384m
+    networks: [shoeshop]

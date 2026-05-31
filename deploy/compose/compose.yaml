@@ -1,0 +1,120 @@
+# Shoe Shop — base platform backbone (data + observability).
+# Always-on layer. App services are added by the overlay files:
+#   compose.core.yaml / compose.full.yaml / compose.lean-jvm.yaml / compose.pyroscope.yaml
+#
+# Every container has a hard mem_limit (ADR-0001): on a constrained host this
+# turns an out-of-memory event into a clean, observable container restart
+# instead of freezing the whole WSL2 VM.
+#
+# Image tags resolve from .env (see .env.example); inline defaults let the
+# stack run even with no .env present.
+
+name: shoe-shop
+
+networks:
+  shoeshop:
+    name: shoeshop
+
+volumes:
+  postgres-data:
+  meili-data:
+  nats-data:
+
+services:
+  # ── PostgreSQL: one instance, database-per-service (ADR-0001 #3) ──
+  postgres:
+    image: postgres:${POSTGRES_TAG:-16-alpine}
+    container_name: shoeshop-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-shoeshop}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 256m
+    networks: [shoeshop]
+
+  # ── Redis: Cart store + rate-limiting ────────────────────────────
+  redis:
+    image: redis:${REDIS_TAG:-7-alpine}
+    container_name: shoeshop-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 96m
+    networks: [shoeshop]
+
+  # ── Meilisearch: Catalogue search ────────────────────────────────
+  meilisearch:
+    image: getmeili/meilisearch:${MEILI_TAG:-v1.10}
+    container_name: shoeshop-meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_ENV: ${MEILI_ENV:-development}
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-shoeshop-dev-master-key}
+      MEILI_NO_ANALYTICS: "true"
+    ports:
+      - "${MEILI_PORT:-7700}:7700"
+    volumes:
+      - meili-data:/meili_data
+    healthcheck:
+      # IPv4 (127.0.0.1) not "localhost": busybox wget resolves localhost to ::1
+      # first, but Meilisearch binds IPv4 only — causing false "unhealthy".
+      test: ["CMD", "wget", "--no-verbose", "--spider", "http://127.0.0.1:7700/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 256m
+    networks: [shoeshop]
+
+  # ── NATS JetStream: async event bus (ADR-0001 #4) ────────────────
+  nats:
+    image: nats:${NATS_TAG:-2.10-alpine}
+    container_name: shoeshop-nats
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "${NATS_PORT:-4222}:4222"     # client
+      - "${NATS_MON_PORT:-8222}:8222" # monitoring / healthz
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      # IPv4 (127.0.0.1) not "localhost", for the same IPv6-loopback reason
+      # documented on the Meilisearch healthcheck above.
+      test: ["CMD", "wget", "--no-verbose", "--spider", "http://127.0.0.1:8222/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    mem_limit: 128m
+    networks: [shoeshop]
+
+  # ── Grafana LGTM bundle: Grafana + Prometheus + Loki + Tempo +
+  #    embedded OpenTelemetry Collector (one image, lean local default) ──
+  otel-lgtm:
+    image: grafana/otel-lgtm:${OTEL_LGTM_TAG:-latest}
+    container_name: shoeshop-otel-lgtm
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"  # Grafana UI
+      - "${OTLP_GRPC_PORT:-4317}:4317" # OTLP gRPC receiver
+      - "${OTLP_HTTP_PORT:-4318}:4318" # OTLP HTTP receiver
+    mem_limit: 1024m
+    networks: [shoeshop]
