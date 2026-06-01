@@ -6,7 +6,8 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-01 (Users service landed)_
+> _Last updated: 2026-06-01 (MELT direction set — see ADR-0002; telemetry
+> standard redefined from traces-only to four correlated signals)_
 
 ---
 
@@ -21,6 +22,22 @@ The product is a real storefront (browse, search, cart, checkout) implemented
 as ~11 microservices across 6 languages. The point is not the shopping; it's
 that the system is **real enough to break in interesting ways and observable
 enough to understand why.**
+
+### The deeper purpose (the real product)
+
+Sharpened as of ADR-0002: Shoe Shop is an **observability data generator**. Its
+output is **correlated four-signal telemetry — MELT: Metrics, Events, Logs,
+Traces — plus a labeled, reproducible incident corpus.** That corpus is the
+training / eval dataset for a future AI SRE ("**project 2**").
+
+This is why **full, correlated MELT is a hard requirement**, not a nice-to-have:
+an SRE (human or model) trained on traces alone is blind — it sees the *request
+path* but not the *magnitude* (metrics), the *error cause* (logs), or the
+*trigger* (events). The signals are only useful **joined**: `trace_id`/`span_id`
+in logs, metric exemplars to traces, aligned timestamps, consistent resource
+attributes. See §9 for the standard and [ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)
+for the decision; the dataset shape is designed (not yet built) in
+[`docs/dataset/`](docs/dataset/).
 
 ---
 
@@ -48,6 +65,14 @@ This is the most important section — do not assume more is built than is liste
 containers contain real behaviour today. Everything else is a runnable
 placeholder. (Users lives in the `full` profile, so bring it up with
 `task up:full` — or, for validation, just `postgres`, `otel-lgtm`, `users`.)
+
+> **⚠️ Telemetry reality (the active gap).** All four real services currently
+> emit **traces only** — each initializes an OTel `TracerProvider` and nothing
+> else. Per ADR-0002 the golden standard is now **four correlated signals
+> (MELT)**, so **0 of 11 services are MELT-complete**. The immediate roadmap
+> (§11) is to set the four-signal standard on Catalogue, retrofit the other
+> three, and validate correlation — *before* new features. Coverage is tracked
+> in the matrix in §9.
 
 ---
 
@@ -168,23 +193,71 @@ Measured footprint: `core` profile idles around **~0.8 GB** total (otel-lgtm is
 
 ---
 
-## 9. Observability instrumentation (catalogue, as the reference)
+## 9. Observability instrumentation — the four-signal (MELT) standard
 
-- Tracer provider exports OTLP/gRPC, endpoint from `OTEL_EXPORTER_OTLP_ENDPOINT`.
-- `otelgrpc` server handler → one SERVER span per RPC.
-- `otelpgx` → child spans for `pool.acquire` and each SQL query.
-- `otelhttp` transport on the Meilisearch client → child CLIENT span per search.
-- Net effect: a single trace shows `gRPC RPC → {Postgres query, Meili HTTP}`.
-  This is the pattern every future service should follow.
+> **Golden pattern, redefined (ADR-0002).** A service ships only when it emits
+> **four correlated signals — Metrics, Events, Logs, Traces** — not traces
+> alone. The reference is **Catalogue (Go)**; **Users (Python)** is the first
+> retrofit (Python's logs/events are the least mature SDK signals, so it surfaces
+> cross-stack gaps early). Per-stack SDK specifics are written **after
+> verification in Docker** during the retrofit — not asserted here from memory.
 
-**Users (Python) applies the same pattern with the Python SDK:** the
-`opentelemetry-instrumentation-grpc` aio server interceptor produces one SERVER
-span per RPC, `opentelemetry-instrumentation-asyncpg` adds child spans per
-query, and FastAPI (health surface) is instrumented with health paths excluded.
-Validated: `GetUser`/`CreateUser` traces show `gRPC RPC → Postgres query` in
-Tempo. Users runs gRPC (:9090, the inter-service contract) and a FastAPI
-liveness/readiness surface (:8080, used by the container healthcheck) in one
-asyncio loop.
+### Definition of Done (a service is not "done" until all hold, verified in Grafana)
+
+- [ ] **Traces** — OTLP spans in Tempo. *(Already true for all 4 real services.)*
+- [ ] **Metrics** — a `MeterProvider` exports OTLP metrics to Prometheus; RED
+      (rate/errors/duration) present; the latency histogram carries **exemplars**
+      stamped with `trace_id`.
+- [ ] **Logs** — structured logs exported (or bridged) to Loki, **each in-request
+      record carrying `trace_id` + `span_id`**.
+- [ ] **Events** — domain/lifecycle events (OTel Events API where the SDK
+      supports it; span-events or structured log-events as the documented
+      fallback). Rich domain events arrive with the v0.3 NATS write path.
+- [ ] **Correlation proven** — from one Tempo trace you can pivot to its Loki logs
+      (by `trace_id`) and its Prometheus latency/exemplar, all agreeing on
+      `service.name` and timestamp.
+
+The join keys (the same four every signal must share) are specified in
+[`docs/dataset/correlation-contract.md`](docs/dataset/correlation-contract.md):
+`trace_id`/`span_id` in logs, metric exemplars → traces, aligned timestamps, and
+consistent resource attributes (`service.namespace=shoeshop`, `service.name`,
+`deployment.environment=local` — already flowing from `OTEL_RESOURCE_ATTRIBUTES`
+in every Compose service).
+
+### Telemetry coverage matrix
+
+Tracks each real service against the four signals. `M` Metrics · `E` Events ·
+`L` Logs · `T` Traces. (Stubs omitted — they emit nothing real.)
+
+| Service | Stack | M | E | L | T | MELT-complete |
+|---------|-------|---|---|---|---|---------------|
+| catalogue | Go | ⬜ | ⬜ | ⬜ | ✅ | ❌ (reference — retrofit first) |
+| users | Python | ⬜ | ⬜ | ⬜ | ✅ | ❌ (first retrofit) |
+| cart | Node | ⬜ | ⬜ | ⬜ | ✅ | ❌ |
+| bff | TS | ⬜ | ⬜ | ⬜ | ✅ | ❌ |
+
+> ✅ emitted & validated · ⬜ not yet · update a cell only after verifying the
+> signal in Grafana, not on writing the code.
+
+### Current Traces implementation (the ✅ column above)
+
+The trace wiring that exists today — the foundation the other three signals are
+added *alongside*, not replacing:
+
+- **Catalogue (Go):** TracerProvider exports OTLP/gRPC (endpoint from
+  `OTEL_EXPORTER_OTLP_ENDPOINT`); `otelgrpc` server handler → one SERVER span per
+  RPC; `otelpgx` → child spans for `pool.acquire` and each SQL query; `otelhttp`
+  transport on the Meilisearch client → child CLIENT span per search. Net effect:
+  one trace shows `gRPC RPC → {Postgres query, Meili HTTP}`.
+- **Users (Python):** the `opentelemetry-instrumentation-grpc` aio server
+  interceptor produces one SERVER span per RPC, `opentelemetry-instrumentation-asyncpg`
+  adds child spans per query, FastAPI (health surface) is instrumented with health
+  paths excluded. Validated: `GetUser`/`CreateUser` show `gRPC RPC → Postgres
+  query` in Tempo. Users runs gRPC (:9090, the inter-service contract) and a
+  FastAPI liveness/readiness surface (:8080, used by the healthcheck) in one
+  asyncio loop.
+- **Cart (Node) / BFF (TS):** OTel auto-instrumentation; cross-service traces
+  `bff → catalogue` and `bff → cart → redis` validated in Tempo.
 
 ---
 
@@ -193,29 +266,51 @@ asyncio loop.
 Failure is a **first-class feature**, not an afterthought. The plan: a curated
 catalogue of realistic, **labeled, reproducible** incidents — each with a known
 root cause, a real propagation path, and observable symptoms — so the running
-storefront genuinely degrades and the failure can be studied end-to-end in
-traces/metrics/logs. (Design inspired by the author's earlier `Sock-Shop-New`
-incident set, upgraded to lean on OpenTelemetry distributed traces and
+storefront genuinely degrades and the failure can be studied end-to-end across
+**all four MELT signals**. (Design inspired by the author's earlier
+`Sock-Shop-New` incident set, upgraded to lean on OpenTelemetry and
 Compose-native injection.) See §11 for sequencing.
+
+Each incident is the **supervised target** of the project-2 dataset: a labeled
+`(time_window, root_cause, …)` record over a window of correlated MELT. The label
+**schema**, the **correlation contract** (the join keys the telemetry retrofit
+must satisfy), and a worked **example** are designed now — build deferred — in
+[`docs/dataset/`](docs/dataset/). This is *design-first on purpose*: the LGTM
+bundle is ephemeral, so incidents run before the schema exists would produce
+unlabeled, unrecoverable telemetry.
 
 ---
 
 ## 11. Roadmap / next steps
 
-- **v0.2 (in progress):** read path. ✅ Catalogue, ✅ BFF, ✅ Cart (Redis),
+- **v0.2 (done — read path):** ✅ Catalogue, ✅ BFF, ✅ Cart (Redis),
   ✅ **BFF → Cart wired** (`bff → cart → redis` trace validated; BFF exposes
   `/api/cart/:userId` GET/POST-items/DELETE-item/DELETE), ✅ **Users** (Python ·
-  FastAPI + gRPC · Postgres; `gRPC RPC → Postgres query` traces validated).
-  Next: **wire BFF → Users** (account endpoints) and a real **Frontend**
-  consuming the BFF.
-- **v0.3+:** orders/payment/checkout write path with NATS events.
-- **Chaos:** Toxiproxy + (k3d) Chaos Mesh + the first incident scenarios.
-- **Incident framework:** `tools/incident-simulator/` orchestrating labeled
-  scenarios; `(time_window, root_cause)` annotations in Grafana.
+  FastAPI + gRPC · Postgres; `gRPC RPC → Postgres query` traces validated). All
+  **traces-only** (see §9 / the §2 telemetry note).
+- **v0.2-MELT (active — the direction correction, ADR-0002):** make the four real
+  services **MELT-complete** before any new feature. Sequence:
+  1. ✅ docs-first persist — ADR-0002, §9 standard + Definition of Done +
+     coverage matrix, bounded `docs/dataset/` track *(this change)*;
+  2. shared four-signal **telemetry bootstrap** per stack (Go → Node → Python →
+     TS) — **SDK APIs verified in Docker**, logs/events maturity differs by
+     language;
+  3. **retrofit** Catalogue (reference), then Users, Cart, BFF;
+  4. **validate** all four signals correlated end-to-end in
+     Grafana/Tempo/Loki/Prometheus (flip the §9 matrix cells on verification);
+  5. move **Users → `core`** so the four validate together on the default profile.
+- **Then resume features (each born MELT-complete):** wire **BFF → Users**
+  (account endpoints), a real **Frontend** consuming the BFF.
+- **v0.3+:** orders/payment/checkout **write path** with NATS events — where
+  domain **Events** get rich.
+- **Chaos / incident framework:** `tools/incident-simulator/` orchestrating
+  labeled scenarios; `(time_window, root_cause)` records per the
+  [`docs/dataset/`](docs/dataset/) schema; annotations in Grafana.
 
-**Recommended sequencing:** build a couple more real services *before* the
-incident framework — incidents are only meaningful once there's a real
-multi-service request path to break.
+**Recommended sequencing:** finish the MELT retrofit on the existing 4 services
+*before* adding more — telemetry debt is cheapest to pay now (4 services, no
+drift), and every later service then inherits the standard by construction.
+Incidents come *after* enough real, MELT-complete services exist to break.
 
 ---
 

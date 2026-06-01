@@ -1,0 +1,70 @@
+# Worked example of an incident label record (schema v0).
+# DESIGN FIXTURE — illustrative values (trace_ids are placeholders). Its job is
+# to prove the schema in docs/dataset/incident-schema.md is expressive enough,
+# not to describe a real captured run. Based on the README "cascading-timeout"
+# scenario.
+
+schema_version: v0
+incident_id: incident-0001
+title: Cascading timeout from slow Redis
+scenario_id: cascading-timeout
+severity: sev2
+
+time_window:
+  start: "2026-06-01T12:00:00Z"
+  end:   "2026-06-01T12:08:00Z"
+
+fault:
+  type: latency-injection
+  target_service: redis
+  injection_method: toxiproxy          # enum fixed when incident-simulator lands
+  parameters:
+    added_latency_ms: 800
+    jitter_ms: 200
+
+root_cause: >
+  A slow Redis backend inflated Cart RPC latency until the Cart connection pool
+  saturated; BFF requests fanning in through Cart then queued and timed out,
+  while Catalogue stayed healthy but appeared blackholed behind the BFF.
+
+affected_services: [cart, bff]
+
+signals_touched:
+  metrics: true
+  events: true
+  logs: true
+  traces: true
+
+expected_symptoms:
+  - signal: traces
+    service: cart
+    description: gRPC RPC -> Redis (ioredis) child span duration climbs ~800ms+
+    where: '{ resource.service.name = "cart" }'
+  - signal: metrics
+    service: bff
+    description: request duration p99 rises sharply
+    where: 'histogram_quantile(0.99, rpc_server_duration_bucket{service_name="bff"})'
+  - signal: logs
+    service: cart
+    description: connection-pool exhaustion / timeout errors, each carrying trace_id
+    where: '{service_name="cart"} | json | level="error"'
+  - signal: events
+    service: bff
+    description: request-timeout events as upstream RPC deadline is exceeded
+    where: 'event.name = "rpc.timeout"'
+
+correlation:
+  trace_ids:
+    - "00000000000000000000000000000001"   # placeholder — real ids captured at run time
+  resource_selector: 'service.namespace="shoeshop", deployment.environment="local"'
+  exemplar_metric: rpc_server_duration   # histogram whose exemplars link to traces
+
+remediation: >
+  Removed the injected Redis latency (cleared the Toxiproxy toxic); Cart pool
+  drained and BFF latency recovered. Durable fix would add a Cart-side RPC
+  deadline + bounded pool wait so a slow backend sheds load instead of cascading.
+
+labeler: design-fixture
+notes: >
+  Placeholder record authored to validate schema v0. Replace with a captured
+  record once the incident-simulator and a real run exist.
