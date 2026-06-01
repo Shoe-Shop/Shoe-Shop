@@ -47,24 +47,39 @@ services:
       payment: { condition: service_started }
     mem_limit: 128m
 
-  # ── Catalogue — Go · Chi (Postgres + Meilisearch) ────────────────
+  # ── Catalogue — Go · gRPC (Postgres + Meilisearch) ───────────────
+  # First real service (v0.2). Build context is the repo root so the generated
+  # proto module is in scope; see services/catalogue/Dockerfile.
   catalogue:
-    <<: *stub
-    # build: { context: ../../services/catalogue }
+    build:
+      context: ../../
+      dockerfile: services/catalogue/Dockerfile
+    image: shoeshop/catalogue:dev
+    restart: unless-stopped
+    networks: [shoeshop]
     container_name: shoeshop-catalogue
     environment:
       OTEL_SERVICE_NAME: catalogue
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      CATALOGUE_GRPC_ADDR: ":9090"
+      CATALOGUE_DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/catalogue?sslmode=disable"
+      MEILI_URL: "http://meilisearch:7700"
+      MEILI_MASTER_KEY: "${MEILI_MASTER_KEY:-shoeshop-dev-master-key}"
     ports:
-      - "${CATALOGUE_PORT:-9002}:80"
+      - "${CATALOGUE_PORT:-9002}:9090"
     depends_on:
-      # Real service: switch these to condition: service_healthy
-      postgres: { condition: service_started }
-      meilisearch: { condition: service_started }
+      postgres: { condition: service_healthy }
+      meilisearch: { condition: service_healthy }
       otel-lgtm: { condition: service_started }
-    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "/grpc-health-probe", "-addr=127.0.0.1:9090"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 160m
 
   # ── Cart — TypeScript · Fastify (Redis) ──────────────────────────
   cart:

@@ -1,0 +1,13 @@
+# Keep the (repo-root) build context small for service image builds.
+.git
+.github
+docs
+deploy/compose/.env
+**/node_modules
+**/target
+**/dist
+**/.venv
+**/__pycache__
+**/.gradle
+**/build
+**/*.log
