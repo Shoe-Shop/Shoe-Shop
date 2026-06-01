@@ -1,0 +1,13 @@
+# Shoe Shop — single source of truth for service contracts (gRPC).
+# Lint + breaking-change checks run in CI and via `buf` locally.
+version: v2
+modules:
+  - path: .
+    excludes:
+      - gen
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

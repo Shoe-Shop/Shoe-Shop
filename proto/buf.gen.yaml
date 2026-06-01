@@ -1,0 +1,11 @@
+# Codegen for Go. Uses buf remote plugins (no local protoc toolchain needed).
+# Generated code lands in proto/gen/go/<package-path> and is consumed by Go
+# services via a `replace` directive pointing at that module.
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen/go
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: gen/go
+    opt: paths=source_relative

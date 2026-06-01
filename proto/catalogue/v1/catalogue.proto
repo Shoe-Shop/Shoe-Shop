@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+// Catalogue service: the read path for the product catalogue.
+// Backed by PostgreSQL (system of record) and Meilisearch (full-text search).
+package catalogue.v1;
+
+option go_package = "github.com/shoeshop/shoe-shop/proto/gen/go/catalogue/v1;cataloguev1";
+
+// A single product in the catalogue.
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string brand = 4;
+  int64 price_cents = 5;
+  string currency = 6;
+  string image_url = 7;
+  repeated string tags = 8;
+}
+
+message ListProductsRequest {
+  // 1-based page number. Defaults to 1 when unset.
+  int32 page = 1;
+  // Page size. Defaults to 20, capped at 100.
+  int32 page_size = 2;
+}
+
+message ListProductsResponse {
+  repeated Product products = 1;
+  // Total number of products in the catalogue (not just this page).
+  int32 total = 2;
+}
+
+message GetProductRequest {
+  string id = 1;
+}
+
+message GetProductResponse {
+  Product product = 1;
+}
+
+message SearchProductsRequest {
+  string query = 1;
+  // Max hits to return. Defaults to 20, capped at 100.
+  int32 limit = 2;
+}
+
+message SearchProductsResponse {
+  repeated Product products = 1;
+  // Meilisearch's estimate of the total matching documents.
+  int32 estimated_total = 2;
+}
+
+// CatalogueService exposes the product read path over gRPC.
+service CatalogueService {
+  rpc ListProducts(ListProductsRequest) returns (ListProductsResponse);
+  rpc GetProduct(GetProductRequest) returns (GetProductResponse);
+  rpc SearchProducts(SearchProductsRequest) returns (SearchProductsResponse);
+}

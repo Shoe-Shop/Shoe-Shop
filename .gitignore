@@ -80,9 +80,12 @@ venv/
 *.egg-info/
 .python-version
 
-# ── Generated protobuf / codegen ─────────────────────────────
-**/gen/
-proto/**/*.pb.go
+# ── Generated code ───────────────────────────────────────────
+# Go protobuf/gRPC stubs (proto/gen/go) ARE committed — they carry a
+# hand-maintained go.mod and are consumed via a replace directive, so the
+# monorepo stays go-gettable and builds without a codegen step. They are marked
+# linguist-generated in .gitattributes. Regenerate with the commands in
+# proto/README.md. Transient stubs for interpreted languages stay ignored.
 **/*_pb2.py
 **/*_pb2_grpc.py
 
