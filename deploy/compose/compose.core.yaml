@@ -47,10 +47,12 @@ services:
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
       PORT: "8080"
       CATALOGUE_ADDR: "catalogue:9090"
+      CART_ADDR: "cart:9090"
     ports:
       - "${BFF_PORT:-9001}:8080"
     depends_on:
       catalogue: { condition: service_healthy }
+      cart: { condition: service_healthy }
       otel-lgtm: { condition: service_started }
     healthcheck:
       test: ["CMD", "/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

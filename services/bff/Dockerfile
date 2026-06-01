@@ -23,9 +23,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-# Catalogue contract for the runtime gRPC client (loaded by proto-loader).
+# Downstream contracts for the runtime gRPC clients (loaded by proto-loader).
 COPY proto/catalogue ./proto/catalogue
+COPY proto/cart ./proto/cart
 ENV CATALOGUE_PROTO=/app/proto/catalogue/v1/catalogue.proto
+ENV CART_PROTO=/app/proto/cart/v1/cart.proto
 EXPOSE 8080
 # distroless nodejs entrypoint is `node`; these are its args.
 CMD ["-r", "./dist/telemetry.js", "./dist/index.js"]
