@@ -35,14 +35,15 @@ This is the most important section — do not assume more is built than is liste
 | Platform backbone: Postgres, Redis, Meilisearch, NATS, `otel-lgtm` | ✅ **Done & validated** (live smoke test passed) |
 | **Catalogue** service (Go, gRPC, Postgres+sqlc, Meilisearch, OTel) | ✅ **Done & validated** (v0.2) — real traces in Tempo |
 | proto/ contracts + committed Go stubs (buf) | ✅ **Done** (catalogue/v1) |
-| frontend, bff, cart, orders, payment | 🟡 **Stubs** (`traefik/whoami`) — real ports/limits/deps, no logic |
+| **BFF** (Hono/TS, gRPC client → Catalogue, OTel auto-instr) | ✅ **Done & validated** (v0.2) — first cross-service trace `bff → catalogue` |
+| frontend, cart, orders, payment | 🟡 **Stubs** (`traefik/whoami`) — real ports/limits/deps, no logic |
 | users, shipping, inventory, recommendation, notification | 🟡 **Stubs** (full profile) |
 | Zitadel auth | 🟡 Wired in `full` profile, not yet integrated |
 | Incident / chaos framework | 🔴 **Planned** (see §11) |
 | k3d / Helm / Argo CD / Istio paths | 🔴 **Planned / documented only** |
 
-**Rule of thumb:** only Catalogue + the 5 infra containers contain real
-behaviour today. Everything else is a runnable placeholder.
+**Rule of thumb:** only Catalogue, the BFF, + the 5 infra containers contain
+real behaviour today. Everything else is a runnable placeholder.
 
 ---
 
@@ -66,7 +67,7 @@ OTel Collector) on port 3000 / OTLP 4317-4318. Pyroscope is an opt-in sidecar.
 | # | Service | Lang / Stack | Sync | Store | Status |
 |---|---------|--------------|------|-------|--------|
 | 1 | frontend | TypeScript · Next.js 15 | — | — | stub |
-| 2 | bff | TypeScript · Hono | gRPC client | — | stub |
+| 2 | **bff** | TypeScript · Hono | gRPC client | — | **real** |
 | 3 | **catalogue** | **Go 1.25 · gRPC + sqlc** | gRPC | Postgres + Meilisearch | **real** |
 | 4 | cart | Node · Fastify | gRPC | Redis | stub |
 | 5 | orders | Java 21 · Spring Boot | gRPC | Postgres + NATS | stub |
@@ -184,8 +185,9 @@ Compose-native injection.) See §11 for sequencing.
 
 ## 11. Roadmap / next steps
 
-- **v0.2 (in progress):** more real services on the read path — **BFF** (so we
-  get a cross-service trace frontend→BFF→catalogue), then **Cart** / **Users**.
+- **v0.2 (in progress):** read path. ✅ Catalogue, ✅ BFF (cross-service trace
+  `bff → catalogue` validated). Next: **Cart** (Redis) / **Users** (Postgres),
+  then a real **Frontend** consuming the BFF.
 - **v0.3+:** orders/payment/checkout write path with NATS events.
 - **Chaos:** Toxiproxy + (k3d) Chaos Mesh + the first incident scenarios.
 - **Incident framework:** `tools/incident-simulator/` orchestrating labeled
