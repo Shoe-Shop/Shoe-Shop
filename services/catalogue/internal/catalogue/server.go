@@ -6,15 +6,18 @@ package catalogue
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	cataloguev1 "github.com/shoeshop/shoe-shop/proto/gen/go/catalogue/v1"
 	"github.com/shoeshop/shoe-shop/services/catalogue/internal/search"
 	"github.com/shoeshop/shoe-shop/services/catalogue/internal/store"
+	"github.com/shoeshop/shoe-shop/services/catalogue/internal/telemetry"
 )
 
 const (
@@ -63,6 +66,13 @@ func (s *Server) ListProducts(ctx context.Context, req *cataloguev1.ListProducts
 	for _, p := range all[start:end] {
 		products = append(products, storeToProto(p))
 	}
+
+	slog.InfoContext(ctx, "listed products", "page", page, "page_size", pageSize, "returned", len(products), "total", len(all))
+	telemetry.Event(ctx, "catalogue.products.listed",
+		attribute.Int("page", page),
+		attribute.Int("returned", len(products)),
+		attribute.Int("total", len(all)),
+	)
 	return &cataloguev1.ListProductsResponse{
 		Products: products,
 		Total:    int32(len(all)),
@@ -76,11 +86,18 @@ func (s *Server) GetProduct(ctx context.Context, req *cataloguev1.GetProductRequ
 	}
 	p, err := s.queries.GetProduct(ctx, req.GetId())
 	if errors.Is(err, pgx.ErrNoRows) {
+		slog.WarnContext(ctx, "product not found", "product.id", req.GetId())
 		return nil, status.Errorf(codes.NotFound, "product %q not found", req.GetId())
 	}
 	if err != nil {
+		slog.ErrorContext(ctx, "get product failed", "product.id", req.GetId(), "err", err)
 		return nil, status.Errorf(codes.Internal, "get product: %v", err)
 	}
+
+	telemetry.Event(ctx, "catalogue.product.viewed",
+		attribute.String("product.id", p.ID),
+		attribute.String("product.brand", p.Brand),
+	)
 	return &cataloguev1.GetProductResponse{Product: storeToProto(p)}, nil
 }
 
@@ -92,12 +109,20 @@ func (s *Server) SearchProducts(ctx context.Context, req *cataloguev1.SearchProd
 	}
 	hits, total, err := s.search.Search(ctx, req.GetQuery(), limit)
 	if err != nil {
+		slog.ErrorContext(ctx, "search failed", "query", req.GetQuery(), "err", err)
 		return nil, status.Errorf(codes.Internal, "search products: %v", err)
 	}
 	products := make([]*cataloguev1.Product, 0, len(hits))
 	for _, d := range hits {
 		products = append(products, docToProto(d))
 	}
+
+	slog.InfoContext(ctx, "searched products", "query", req.GetQuery(), "hits", len(hits), "estimated_total", total)
+	telemetry.Event(ctx, "catalogue.search.performed",
+		attribute.String("query", req.GetQuery()),
+		attribute.Int("hits", len(hits)),
+		attribute.Int("estimated_total", total),
+	)
 	return &cataloguev1.SearchProductsResponse{
 		Products:       products,
 		EstimatedTotal: int32(total),

@@ -1,6 +1,6 @@
 // Command catalogue is the Shoe Shop product catalogue service. It exposes the
-// CatalogueService gRPC API backed by PostgreSQL and Meilisearch, and emits
-// OpenTelemetry traces over OTLP/gRPC.
+// CatalogueService gRPC API backed by PostgreSQL and Meilisearch, and emits the
+// four correlated OpenTelemetry signals (MELT) over OTLP/gRPC.
 package main
 
 import (
@@ -17,6 +17,7 @@ import (
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	noopmetric "go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -31,6 +32,7 @@ import (
 )
 
 func main() {
+	// Minimal stdout logger until the MELT stack is wired; replaced below.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	if err := run(); err != nil {
 		slog.Error("catalogue exited", "err", err)
@@ -44,14 +46,16 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	shutdownOtel, err := telemetry.Setup(ctx, cfg.ServiceName)
+	tel, err := telemetry.Setup(ctx, cfg.ServiceName)
 	if err != nil {
 		return fmt.Errorf("otel setup: %w", err)
 	}
+	// From here on, logs fan out to stdout AND to Loki with trace_id/span_id.
+	slog.SetDefault(tel.Logger)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = shutdownOtel(shutdownCtx)
+		_ = tel.Shutdown(shutdownCtx)
 	}()
 
 	pool, err := newPool(ctx, cfg.DatabaseURL)
@@ -76,7 +80,15 @@ func run() error {
 		slog.Info("search index populated")
 	}
 
-	grpcServer := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	// otelgrpc StatsHandler provides the server spans; its built-in metrics are
+	// disabled (no-op meter) so the catalogue's own interceptor owns the RED
+	// metrics with controlled buckets and trace_id exemplars.
+	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler(
+			otelgrpc.WithMeterProvider(noopmetric.NewMeterProvider()),
+		)),
+		grpc.ChainUnaryInterceptor(tel.UnaryInterceptor),
+	)
 	cataloguev1.RegisterCatalogueServiceServer(grpcServer, catalogue.NewServer(queries, searcher))
 
 	healthSrv := health.NewServer()

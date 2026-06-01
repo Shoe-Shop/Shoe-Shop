@@ -11,9 +11,10 @@ Events, Logs, Traces) plus a labeled, reproducible **incident corpus** to train 
 future AI SRE ("project 2"). The storefront is the vehicle, not the goal; see
 **[ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)**. Four
 services are real today (**Catalogue** Go, **BFF** TS, **Cart** Node, **Users**
-Python) + the 5 infra containers; the rest are `traefik/whoami` stubs. ⚠️ All
-four real services are **traces-only** right now — **0 of 11 are MELT-complete**
-(the active gap). See ARCHITECTURE.md §2 / §9.
+Python) + the 5 infra containers; the rest are `traefik/whoami` stubs.
+**Catalogue is MELT-complete** (four signals verified correlated); BFF, Cart and
+Users are still **traces-only** — **1 of 11 is MELT-complete** (the active gap).
+See ARCHITECTURE.md §2 / §9.
 
 ## Hard rules
 - **No hallucination.** Verify against the code/registry before claiming things.
@@ -47,11 +48,12 @@ four real services are **traces-only** right now — **0 of 11 are MELT-complete
 Make the 4 real services **MELT-complete before any new feature.** Sequence:
 1. ✅ docs-first persist (ADR-0002, §9 standard + Definition of Done + coverage
    matrix, bounded `docs/dataset/` track) — **done**.
-2. **Next:** shared four-signal **telemetry bootstrap** per stack — **verify SDK
-   APIs in Docker** (logs/events maturity differs by language). Start on the
-   reference: **Catalogue (Go)**.
-3. Retrofit Catalogue → Users → Cart → BFF; validate all four signals correlated
-   in Grafana/Tempo/Loki/Prometheus (flip the §9 matrix cells on verification).
+2. ✅ four-signal **telemetry bootstrap** on the reference **Catalogue (Go)** —
+   SDK APIs verified in Docker; **Catalogue MELT-complete & verified correlated**
+   (`services/catalogue/internal/telemetry/`, ARCHITECTURE.md §9).
+3. **Next:** retrofit **Users → Cart → BFF** against the Catalogue reference —
+   verify each stack's SDK APIs in Docker (logs/events maturity differs by
+   language); validate correlated in Grafana/Tempo/Loki/Prometheus (flip §9 cells).
 4. Move **Users `full` → `core`** so the 4 validate together on the default profile.
 5. *Then* resume features: **BFF → Users**, a real **Frontend**, v0.3 NATS write
    path. Incident/chaos framework comes *after* the 4 are MELT-complete.

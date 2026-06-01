@@ -6,8 +6,8 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-01 (MELT direction set — see ADR-0002; telemetry
-> standard redefined from traces-only to four correlated signals)_
+> _Last updated: 2026-06-01 (Catalogue MELT-complete — four signals emitted and
+> verified correlated in the LGTM bundle; reference bootstrap landed, §9)_
 
 ---
 
@@ -66,13 +66,14 @@ containers contain real behaviour today. Everything else is a runnable
 placeholder. (Users lives in the `full` profile, so bring it up with
 `task up:full` — or, for validation, just `postgres`, `otel-lgtm`, `users`.)
 
-> **⚠️ Telemetry reality (the active gap).** All four real services currently
-> emit **traces only** — each initializes an OTel `TracerProvider` and nothing
-> else. Per ADR-0002 the golden standard is now **four correlated signals
-> (MELT)**, so **0 of 11 services are MELT-complete**. The immediate roadmap
-> (§11) is to set the four-signal standard on Catalogue, retrofit the other
-> three, and validate correlation — *before* new features. Coverage is tracked
-> in the matrix in §9.
+> **⚠️ Telemetry reality (the active gap, shrinking).** **Catalogue (Go) is now
+> MELT-complete** — Metrics + Events + Logs + Traces emitted and **verified
+> correlated** in the LGTM bundle (§9). The other three real services (BFF, Cart,
+> Users) are still **traces only** — each initializes an OTel `TracerProvider`
+> and nothing else. Per ADR-0002 the golden standard is **four correlated signals
+> (MELT)**, so **1 of 11 services is MELT-complete**. The immediate roadmap (§11)
+> is to retrofit Users → Cart → BFF against the Catalogue reference and validate
+> correlation — *before* new features. Coverage is tracked in the matrix in §9.
 
 ---
 
@@ -231,8 +232,8 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 
 | Service | Stack | M | E | L | T | MELT-complete |
 |---------|-------|---|---|---|---|---------------|
-| catalogue | Go | ⬜ | ⬜ | ⬜ | ✅ | ❌ (reference — retrofit first) |
-| users | Python | ⬜ | ⬜ | ⬜ | ✅ | ❌ (first retrofit) |
+| catalogue | Go | ✅ | ✅ | ✅ | ✅ | ✅ (reference — verified correlated) |
+| users | Python | ⬜ | ⬜ | ⬜ | ✅ | ❌ (first retrofit — next) |
 | cart | Node | ⬜ | ⬜ | ⬜ | ✅ | ❌ |
 | bff | TS | ⬜ | ⬜ | ⬜ | ✅ | ❌ |
 
@@ -258,6 +259,50 @@ added *alongside*, not replacing:
   asyncio loop.
 - **Cart (Node) / BFF (TS):** OTel auto-instrumentation; cross-service traces
   `bff → catalogue` and `bff → cart → redis` validated in Tempo.
+
+### Catalogue MELT implementation (reference — verified correlated 2026-06-01)
+
+The reference four-signal bootstrap lives in
+[`services/catalogue/internal/telemetry/`](services/catalogue/internal/telemetry/).
+One shared `resource` feeds a tracer, a meter and a logger provider, so every
+signal agrees on `service.name`/`service.namespace`/`deployment.environment`.
+All SDK APIs were **verified in Docker** (compiler as ground truth) before use;
+versions are recorded below for the Go stack the other retrofits diverge from.
+
+- **Metrics (M).** A `MeterProvider` (`sdk/metric` v1.44.0) exports OTLP/gRPC via
+  a periodic reader, with `exemplar.TraceBasedFilter`. A unary interceptor records
+  **RED**: `rpc.server.requests` (counter, by `rpc.method` + `rpc.grpc.status_code`)
+  and `rpc.server.duration` (histogram, seconds, explicit buckets). otelgrpc's
+  built-in metrics are disabled (`otelgrpc.WithMeterProvider(noop)`) so the service
+  owns the histogram and its **trace_id exemplars**. In Prometheus:
+  `rpc_server_duration_seconds_{bucket,sum,count}` + `rpc_server_requests_total`,
+  the histogram buckets carrying exemplars with `trace_id`/`span_id`.
+- **Logs (L).** `slog` fans out (a small multi-handler) to stdout JSON *and* the
+  OTel `otelslog` bridge (`contrib/bridges/otelslog` v0.19.0) → `sdk/log` v0.20.0
+  → OTLP/gRPC → Loki. Handlers log with `slog.*Context`, so in-request records
+  carry the active `trace_id`/`span_id` (Loki labels `service_name`,
+  `service_namespace`, `deployment_environment`; `trace_id`/`span_id` per record).
+- **Events (E).** Domain/lifecycle events use the **Logs API** with `SetEventName`
+  (`catalogue.product.viewed`, `catalogue.products.listed`,
+  `catalogue.search.performed`), emitted with the request context so they also
+  carry `trace_id`/`span_id`. The EventName lands in the log body; events are
+  identified by body + the `github.com/shoeshop/shoe-shop/services/catalogue`
+  scope + their domain attributes.
+- **Traces (T).** Unchanged from the existing wiring above
+  (`gRPC RPC → pool.acquire → Postgres query`, + Meili HTTP on search).
+- **Correlation proven (in the LGTM bundle).** A single `trace_id` joins **M → T → L**:
+  an exemplar on `rpc_server_duration_seconds_bucket{rpc_method=…GetProduct}`
+  resolves to a trace in Tempo (`/api/traces/<id>` → 200) whose `trace_id` selects
+  that request's record in Loki (`{service_name="catalogue"} | trace_id="<id>"`).
+  Events resolve the same way (`|= "catalogue.product.viewed"` → record with
+  `trace_id` whose trace exists in Tempo). RED errors are visible
+  (`rpc_server_requests_total{rpc_grpc_status_code="NotFound"}`).
+
+> **Verified Go OTel module set** (compatible with `otel` v1.44.0 core):
+> `otlpmetricgrpc`/`sdk/metric` v1.44.0 · `otlploggrpc`/`log`/`sdk/log` v0.20.0 ·
+> `contrib/bridges/otelslog` v0.19.0 · `otelgrpc` v0.69.0. Each later stack
+> (Node → Python → TS) re-verifies its own SDK APIs in Docker — logs/events
+> maturity differs by language.
 
 ---
 
@@ -291,13 +336,13 @@ unlabeled, unrecoverable telemetry.
 - **v0.2-MELT (active — the direction correction, ADR-0002):** make the four real
   services **MELT-complete** before any new feature. Sequence:
   1. ✅ docs-first persist — ADR-0002, §9 standard + Definition of Done +
-     coverage matrix, bounded `docs/dataset/` track *(this change)*;
-  2. shared four-signal **telemetry bootstrap** per stack (Go → Node → Python →
-     TS) — **SDK APIs verified in Docker**, logs/events maturity differs by
-     language;
-  3. **retrofit** Catalogue (reference), then Users, Cart, BFF;
-  4. **validate** all four signals correlated end-to-end in
-     Grafana/Tempo/Loki/Prometheus (flip the §9 matrix cells on verification);
+     coverage matrix, bounded `docs/dataset/` track;
+  2. ✅ shared four-signal **telemetry bootstrap** on the reference stack (Go) —
+     SDK APIs verified in Docker (`services/catalogue/internal/telemetry/`);
+  3. **retrofit** — ✅ Catalogue (reference, verified correlated); **next:**
+     Users → Cart → BFF;
+  4. ✅ for Catalogue: all four signals validated correlated in
+     Grafana/Tempo/Loki/Prometheus (matrix cell flipped); repeat per retrofit;
   5. move **Users → `core`** so the four validate together on the default profile.
 - **Then resume features (each born MELT-complete):** wire **BFF → Users**
   (account endpoints), a real **Frontend** consuming the BFF.
