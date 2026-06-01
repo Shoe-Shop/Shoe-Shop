@@ -2,7 +2,7 @@
 
 # 👟 Shoe Shop
 
-**A polyglot, cloud-native e-commerce platform — purpose-built for Observability, Chaos Engineering, and AI-driven SRE research.**
+**A polyglot, cloud-native e-commerce platform — built as a hands-on playground for Observability, Chaos Engineering, and Reliability practice.**
 
 *Six languages, one request path, telemetry-rich by default.*
 
@@ -43,33 +43,24 @@ It is an open-source e-commerce platform engineered as a **sandbox for modern op
 - **Failure as a first-class feature** — built-in, repeatable incident scenarios with known root causes, not just ad-hoc fault injection.
 - **Production-grade patterns** — Gateway API ingress, gRPC plus event-driven messaging, GitOps delivery, and signed multi-arch images.
 
-Nothing here is a toy. The telemetry is rich enough to debug with, to benchmark tools against, and — critically — to train an AI on.
+Nothing here is a toy. The telemetry is rich enough to debug with, to benchmark tools against, and to genuinely learn from.
 
 ---
 
 ## 🚀 Project Vision
 
-Shoe Shop pursues two missions, weighted equally:
+Shoe Shop has one goal: be the **e-commerce platform you learn real distributed-systems operations on.**
 
-### Mission 1 — A definitive open-source sandbox for observability & reliability engineering
+Most sample shops are toys — a single language, a shallow request path, telemetry you can't actually debug with, and code that never fails in interesting ways. Shoe Shop is the opposite. It's a complete, runnable storefront — browse, search, cart, checkout — built the way a real production system is built, then instrumented so deeply that you can *see* everything it does.
 
-A platform any engineer, educator, or tool author can stand up in minutes to explore the hard parts of running distributed systems:
+It's meant to be genuinely useful to anyone who wants to learn:
 
-- Distributed tracing across **6 languages**
-- Log / metric / trace / profile correlation in a single pane of glass
-- Reliability experiments with deterministic blast radius
-- Gateway API, GitOps, and progressive-delivery patterns under realistic traffic
+- **Engineers** practising distributed tracing, log / metric / trace / profile correlation, and reading a whole system through a single pane of glass.
+- **Educators** who need a realistic, reproducible platform that stands up in minutes on a laptop.
+- **Tool authors** who want a rich, honest telemetry source to build against and benchmark.
+- **Operators-in-training** who want to live through real incidents — known root cause, real blast radius, observable symptoms — and practise diagnosing them under pressure.
 
-### Mission 2 — A high-fidelity telemetry generator for **Project 2: AI SRE**
-
-This is the load-bearing constraint. The telemetry Shoe Shop emits must be **rich, correlated, and incident-realistic** enough to train and evaluate an AI Site Reliability Engineer. Concretely:
-
-- Every span, log, and metric carries `trace_id` and `service.name` per OTel semconv
-- Incidents are **scenarios** — a root cause, a propagation path, and observable symptoms — never random noise
-- Golden signals (latency / traffic / errors / saturation) are exposed per-service and per-endpoint
-- Labeled incident windows are recorded as `(telemetry, root_cause)` pairs for supervised training
-
-> **Tie-breaker:** if a design choice helps Mission 1 but corrupts Mission 2, Mission 2 wins.
+The guiding principle: **if it happens in a real production system, it should be reproducible here** — and observable enough that you can understand *what* broke, *where* it broke, and *why*.
 
 ---
 
@@ -168,7 +159,7 @@ Polyglot is deliberate: it forces the observability layer to prove cross-languag
 | 7 | **Users / Auth** | Python · FastAPI | Python 3.12 | PostgreSQL + **Zitadel** (OIDC) | FastAPI is the most idiomatic async Python web stack; auth is delegated to **Zitadel** — a Go-based OIDC provider (~200 MB) chosen over Keycloak's ~500 MB JVM for the local RAM budget — so we demo real SSO traces without the footprint. Pluggable behind standard OIDC; Keycloak remains a documented swap. |
 | 8 | **Shipping** | Kotlin · Ktor (coroutines) | JVM 21 | PostgreSQL | Integration-style service (calls fake carrier APIs). Showcases the *other* major JVM language and structured concurrency. |
 | 9 | **Inventory** | Go · gRPC-first | Go 1.25 | PostgreSQL | High-throughput stock reservations. gRPC streaming demonstrates non-HTTP tracing. |
-| 10 | **Recommendation** | Python · FastAPI + ONNX Runtime | Python 3.12 | PostgreSQL (read-replica) | Realistic AI-inference workload — tail-latency heavy, GPU-optional. Important for the AI SRE because ML services have distinctive failure modes. |
+| 10 | **Recommendation** | Python · FastAPI + ONNX Runtime | Python 3.12 | PostgreSQL (read-replica) | Realistic AI-inference workload — tail-latency heavy, GPU-optional. ML services have distinctive, tail-latency-driven failure modes worth observing. |
 | 11 | **Notification** | Go · NATS subscriber | Go 1.25 | (stateless) | Fan-out worker — email/SMS/webhook mocks. Demonstrates async-only services in traces. |
 
 ### Languages summary
@@ -232,22 +223,22 @@ flowchart LR
 | **Logs** | **Grafana Loki** | Label-based indexing, cheap at rest, native Grafana integration. Trivial trace↔log correlation via `trace_id` label. |
 | **Metrics** | **Grafana Mimir** (Prometheus-compatible) | Horizontally scalable Prometheus. Single binary for local; multi-tenant at scale. |
 | **Traces** | **Grafana Tempo** | Object-store backed (cheap), full-fidelity (no sampling required at storage), `TraceQL` is genuinely good. |
-| **Profiles** | **Grafana Pyroscope** | Continuous profiling closes the "I see the slow trace, now show me the CPU" loop. Critical for the AI SRE training data. |
+| **Profiles** | **Grafana Pyroscope** | Continuous profiling closes the "I see the slow trace, now show me the CPU" loop. |
 | **UI / Alerts** | **Grafana OSS 11** + Alertmanager | Dashboards-as-code via Grafonnet / Foundation SDK. Alerts as code via Prometheus rules. |
 
-> **⚠️ Local vs. cluster footprint.** The table above describes the **cluster/prod** topology. **Locally**, this entire stack is collapsed into the single **`grafana/otel-lgtm`** image (Grafana + Prometheus + Loki + Tempo, ~400 MB) plus **one** OTel Collector. **Pyroscope** runs as an **opt-in** sidecar container, toggled on only when profiling memory-leak scenarios for the AI SRE. Separate **Mimir**, the two-tier agent+gateway Collector, and standalone Loki/Tempo are reserved for the cluster path. See [Local Development Promise](#-local-development-promise).
+> **⚠️ Local vs. cluster footprint.** The table above describes the **cluster/prod** topology. **Locally**, this entire stack is collapsed into the single **`grafana/otel-lgtm`** image (Grafana + Prometheus + Loki + Tempo, ~400 MB) plus **one** OTel Collector. **Pyroscope** runs as an **opt-in** sidecar container, toggled on only when profiling memory-leak or saturation scenarios. Separate **Mimir**, the two-tier agent+gateway Collector, and standalone Loki/Tempo are reserved for the cluster path. See [Local Development Promise](#-local-development-promise).
 
 ### Instrumentation strategy
 - **OpenTelemetry SDKs** in every service — no vendor agents.
 - **Auto-instrumentation** wherever it exists (Java agent, Node.js zero-code, Python `opentelemetry-instrument`).
 - **Manual spans** for business operations (`order.checkout`, `payment.authorize`) with semantic-convention attributes.
-- **Grafana Beyla** as an eBPF-based safety net — captures HTTP/gRPC golden signals from any language even if SDK instrumentation regresses. Crucial for guaranteeing telemetry coverage for the AI SRE.
+- **Grafana Beyla** as an eBPF-based safety net — captures HTTP/gRPC golden signals from any language even if SDK instrumentation regresses — guaranteeing golden-signal coverage even where hand-written instrumentation is missing.
 - **Logs are structured JSON** (slog / pino / structlog / logback-json), always carrying `trace_id` and `span_id`.
 
 ### SLOs as code
 - **Sloth** to generate Prometheus recording + alerting rules from human-readable SLO YAML.
 - Every service ships with a baseline SLO (e.g. Catalogue: 99.9% of `GET /products` < 200ms over 30d).
-- SLO burn-rate alerts feed Alertmanager → routed to the Incident Simulator's annotation store, so the AI SRE training pipeline can label "which incident triggered which alert."
+- SLO burn-rate alerts feed Alertmanager → routed to the Incident Simulator's annotation store, so you can see exactly "which incident triggered which alert."
 
 ### Service mesh observability (optional layer)
 **Istio Ambient Mode** (sidecar-less) is offered as an opt-in overlay for users who want L7 mesh telemetry without sidecar overhead. **Linkerd** is the documented alternative. Neither is required for the core experience.
@@ -281,7 +272,7 @@ A small Go service in `tools/incident-simulator/` that **orchestrates scenarios*
 Each scenario:
 - Has a machine-readable **manifest** (`scenarios/cascading-timeout.yaml`) declaring the fault sequence, expected symptoms, and ground-truth root cause.
 - Emits **annotation events** to Grafana (`incident.start`, `incident.end`) tagged with the scenario ID.
-- Produces a labeled `(time_window, root_cause)` record — **this is the training signal for Project 2: AI SRE.**
+- Produces a labeled `(time_window, root_cause)` record — **so every incident is reproducible and can be studied after the fact.**
 
 ### Load generation
 - **k6** for HTTP/gRPC load with realistic distributions (Pareto for cart sizes, Poisson for arrivals).
@@ -306,7 +297,7 @@ Think **Allbirds / On / Veja** — clean editorial layout, generous whitespace, 
 
 ### Why this matters beyond aesthetics
 - **Realistic frontend telemetry**: SSR + RSC + Client Components produce a non-trivial trace shape — server-side fetch waterfalls, client-side hydration, partial revalidation — that simpler server-rendered UIs never generate.
-- **Real Core Web Vitals data**: We ship `web-vitals` → OTel → Grafana, so the AI SRE can correlate backend incidents with frontend UX degradation.
+- **Real Core Web Vitals data**: We ship `web-vitals` → OTel → Grafana, so you can correlate backend incidents with frontend UX degradation.
 - **Accessible by default**: WCAG 2.2 AA. Lighthouse a11y score ≥ 95 is a CI gate.
 
 ---
@@ -334,7 +325,7 @@ shoe-shop/
 │   ├── observability/                   # Dashboard catalogue, semconv guide
 │   ├── chaos/                           # Scenario catalogue & runbooks
 │   ├── adr/                             # Architecture Decision Records
-│   └── runbooks/                        # Per-service runbooks (also fed to AI SRE)
+│   └── runbooks/                        # Per-service runbooks (diagnosis playbooks)
 │
 ├── proto/                               # Single source of truth: gRPC + AsyncAPI
 │   ├── buf.yaml
@@ -393,7 +384,7 @@ shoe-shop/
 │   ├── load-generator/                  # k6 scripts + personas
 │   ├── incident-simulator/              # Scenario orchestrator (Go)
 │   ├── data-seeder/                     # Idempotent seed loader
-│   └── trace-labeler/                   # Exports (window, root_cause) for AI SRE
+│   └── trace-labeler/                   # Exports (window, root_cause) incident labels
 │
 ├── scripts/
 │   ├── bootstrap.sh                     # One-shot local bringup
@@ -442,7 +433,7 @@ One command interface, two runtimes:
 A root `Taskfile.yml` exposes the same verbs across tiers: `task up`, `task seed`, `task chaos:run cascading-timeout`, `task obs`.
 
 ### Standing mandates
-- **Every container has a hard memory limit** — turns an out-of-memory event into a clean, observable restart instead of freezing the host, and yields better AI-SRE training data.
+- **Every container has a hard memory limit** — turns an out-of-memory event into a clean, observable restart instead of freezing the host, and yields clean, legible failure signals.
 - **Local observability is the `grafana/otel-lgtm` bundle** (~400 MB) with **opt-in Pyroscope**; the separated LGTM+P stack is reserved for the cluster path.
 - **Local Kubernetes is k3d** (not kind) when chaos tooling needs a real control plane; sustained high-volume telemetry generation targets a larger host or a cheap cloud node.
 - **Raw Postgres, database-per-service** (no managed DB), and **NATS JetStream** as the broker — both chosen so failures stay reproducible and inspectable.
@@ -464,7 +455,7 @@ A root `Taskfile.yml` exposes the same verbs across tiers: `task up`, `task seed
 - [ ] **v0.8 — Mesh overlay**: Istio Ambient opt-in
 - [ ] **v0.9 — Polish**: Lighthouse ≥ 95, k6 personas, docs site
 - [ ] **v1.0 — GA**: Helm chart on Artifact Hub, blog post, conference demo
-- [ ] **v1.x — AI SRE bridge**: `trace-labeler` exports for Project 2
+- [ ] **v1.x — Incident dataset**: labeled `(telemetry, root_cause)` exports for offline study and automation
 
 ---
 
@@ -485,6 +476,6 @@ Contributions are welcomed once the v0.1 scaffold is in place. The contribution 
 
 **Shoe Shop is a love letter to the people running production at 3 a.m.**
 
-*Built so the tools — and the AI SREs that will partner with them — have something real to learn from.*
+*Built so anyone learning to run distributed systems has something real to learn from.*
 
 </div>
