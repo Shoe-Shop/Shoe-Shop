@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+// Cart service: a shopper's in-progress basket. Backed by Redis (session-affine,
+// mutation-heavy, short-lived). Consumed by the BFF (and later Orders) over gRPC.
+package cart.v1;
+
+option go_package = "github.com/shoeshop/shoe-shop/proto/gen/go/cart/v1;cartv1";
+
+message CartItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message Cart {
+  string user_id = 1;
+  repeated CartItem items = 2;
+}
+
+message GetCartRequest {
+  string user_id = 1;
+}
+
+message GetCartResponse {
+  Cart cart = 1;
+}
+
+message AddItemRequest {
+  string user_id = 1;
+  string product_id = 2;
+  // Quantity to add (may be negative to decrement); the item is removed if the
+  // resulting quantity is <= 0.
+  int32 quantity = 3;
+}
+
+message AddItemResponse {
+  Cart cart = 1;
+}
+
+message RemoveItemRequest {
+  string user_id = 1;
+  string product_id = 2;
+}
+
+message RemoveItemResponse {
+  Cart cart = 1;
+}
+
+message ClearCartRequest {
+  string user_id = 1;
+}
+
+message ClearCartResponse {
+  Cart cart = 1;
+}
+
+// CartService manages a per-user basket.
+service CartService {
+  rpc GetCart(GetCartRequest) returns (GetCartResponse);
+  rpc AddItem(AddItemRequest) returns (AddItemResponse);
+  rpc RemoveItem(RemoveItemRequest) returns (RemoveItemResponse);
+  rpc ClearCart(ClearCartRequest) returns (ClearCartResponse);
+}

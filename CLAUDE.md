@@ -37,6 +37,6 @@ and the 5 infra containers are real today; all other services are
   otelpgx + otelhttp so every request is a multi-span trace in Tempo.
 
 ## Current focus
-v0.2 read path — ✅ Catalogue and ✅ BFF are real (cross-service trace
-`bff → catalogue` validated). Next real service: **Cart** (Redis) or **Users**
-(Postgres). Incident/chaos framework comes *after* enough real services exist.
+v0.2 read path — ✅ Catalogue, ✅ BFF, ✅ Cart (Redis) are real. Next: wire
+**BFF → Cart**, then **Users** (Postgres) / a real **Frontend**. Incident/chaos
+framework comes *after* enough real services exist.

@@ -94,22 +94,37 @@ services:
       start_period: 20s
     mem_limit: 160m
 
-  # ── Cart — TypeScript · Fastify (Redis) ──────────────────────────
+  # ── Cart — Node.js · gRPC (Redis) ────────────────────────────────
+  # Real service (v0.2). gRPC API backed by Redis; build context is the repo
+  # root (the runtime gRPC server loads the Cart .proto). See services/cart.
   cart:
-    <<: *stub
-    # build: { context: ../../services/cart }
+    build:
+      context: ../../
+      dockerfile: services/cart/Dockerfile
+    image: shoeshop/cart:dev
+    restart: unless-stopped
+    networks: [shoeshop]
     container_name: shoeshop-cart
     environment:
       OTEL_SERVICE_NAME: cart
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      CART_GRPC_ADDR: "0.0.0.0:9090"
+      HEALTH_PORT: "8080"
+      REDIS_URL: "redis://redis:6379"
     ports:
-      - "${CART_PORT:-9003}:80"
+      - "${CART_PORT:-9003}:9090"
     depends_on:
-      redis: { condition: service_started }
+      redis: { condition: service_healthy }
       otel-lgtm: { condition: service_started }
-    mem_limit: 160m
+    healthcheck:
+      test: ["CMD", "/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 192m
 
   # ── Orders — Java 21 · Spring Boot (Postgres + NATS) ─────────────
   orders:
