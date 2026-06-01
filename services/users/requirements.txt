@@ -1,0 +1,26 @@
+# Users service runtime dependencies. Pinned for reproducible image builds
+# (mirrors the repo's pin-everything convention for compose image tags).
+# Resolved as a mutually compatible set (see proto/README.md for codegen).
+
+# gRPC server + protobuf runtime. protobuf must satisfy the >=5.28.1 guard
+# baked into the generated stubs (proto/gen/python/users/v1/users_pb2.py).
+grpcio==1.68.1
+grpcio-reflection==1.68.1
+protobuf==5.29.6
+
+# Postgres (database-per-service). Async driver.
+asyncpg==0.31.0
+
+# FastAPI health/readiness HTTP surface, served by uvicorn alongside gRPC.
+fastapi==0.136.3
+uvicorn==0.48.0
+
+# OpenTelemetry: OTLP/gRPC export + auto-instrumentation for the gRPC server,
+# asyncpg queries, and the FastAPI health app. Endpoint/service-name come from
+# the standard OTEL_* env vars (configured in compose), per the catalogue
+# reference pattern (ARCHITECTURE.md §9).
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp-proto-grpc==1.42.1
+opentelemetry-instrumentation-grpc==0.63b1
+opentelemetry-instrumentation-asyncpg==0.63b1
+opentelemetry-instrumentation-fastapi==0.63b1

@@ -38,5 +38,7 @@ and the 5 infra containers are real today; all other services are
 
 ## Current focus
 v0.2 read path — ✅ Catalogue, ✅ BFF, ✅ Cart (Redis), ✅ **BFF → Cart** wired
-(`bff → cart → redis` trace validated). Next: **Users** (Postgres) / a real
-**Frontend**. Incident/chaos framework comes *after* enough real services exist.
+(`bff → cart → redis` trace validated), ✅ **Users** (Python · FastAPI + gRPC ·
+Postgres; `gRPC RPC → Postgres query` traces validated; in the `full` profile).
+Next: **wire BFF → Users** / a real **Frontend**. Incident/chaos framework comes
+*after* enough real services exist.

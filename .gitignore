@@ -81,13 +81,15 @@ venv/
 .python-version
 
 # ── Generated code ───────────────────────────────────────────
-# Go protobuf/gRPC stubs (proto/gen/go) ARE committed — they carry a
-# hand-maintained go.mod and are consumed via a replace directive, so the
-# monorepo stays go-gettable and builds without a codegen step. They are marked
-# linguist-generated in .gitattributes. Regenerate with the commands in
-# proto/README.md. Transient stubs for interpreted languages stay ignored.
+# protobuf/gRPC stubs under proto/gen/ ARE committed (Go in gen/go, Python in
+# gen/python) — so the monorepo builds on a fresh clone with no codegen step.
+# They are marked linguist-generated in .gitattributes. Regenerate with the
+# commands in proto/README.md. Transient stubs generated elsewhere (e.g. inside
+# a service tree during local dev) stay ignored.
 **/*_pb2.py
 **/*_pb2_grpc.py
+!proto/gen/python/**/*_pb2.py
+!proto/gen/python/**/*_pb2_grpc.py
 
 # ── Observability / data volumes (local) ─────────────────────
 deploy/compose/data/

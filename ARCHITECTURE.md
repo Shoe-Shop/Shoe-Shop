@@ -6,7 +6,7 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-01_
+> _Last updated: 2026-06-01 (Users service landed)_
 
 ---
 
@@ -37,14 +37,17 @@ This is the most important section — do not assume more is built than is liste
 | proto/ contracts + committed Go stubs (buf) | ✅ **Done** (catalogue/v1) |
 | **BFF** (Hono/TS, gRPC client → Catalogue + Cart, OTel auto-instr) | ✅ **Done & validated** (v0.2) — cross-service traces `bff → catalogue` and `bff → cart → redis` |
 | **Cart** (Node/TS, gRPC, Redis, OTel auto-instr) | ✅ **Done & validated** (v0.2) — gRPC → Redis (ioredis) spans in Tempo |
+| **Users** (Python 3.12, FastAPI + gRPC, Postgres, OTel) | ✅ **Done & validated** (v0.2) — multi-span `gRPC RPC → Postgres query` traces in Tempo |
 | frontend, orders, payment | 🟡 **Stubs** (`traefik/whoami`) — real ports/limits/deps, no logic |
-| users, shipping, inventory, recommendation, notification | 🟡 **Stubs** (full profile) |
+| shipping, inventory, recommendation, notification | 🟡 **Stubs** (full profile) |
 | Zitadel auth | 🟡 Wired in `full` profile, not yet integrated |
 | Incident / chaos framework | 🔴 **Planned** (see §11) |
 | k3d / Helm / Argo CD / Istio paths | 🔴 **Planned / documented only** |
 
-**Rule of thumb:** only Catalogue, the BFF, Cart, + the 5 infra containers
-contain real behaviour today. Everything else is a runnable placeholder.
+**Rule of thumb:** only Catalogue, the BFF, Cart, Users, + the 5 infra
+containers contain real behaviour today. Everything else is a runnable
+placeholder. (Users lives in the `full` profile, so bring it up with
+`task up:full` — or, for validation, just `postgres`, `otel-lgtm`, `users`.)
 
 ---
 
@@ -73,7 +76,7 @@ OTel Collector) on port 3000 / OTLP 4317-4318. Pyroscope is an opt-in sidecar.
 | 4 | **cart** | Node.js · gRPC | gRPC | Redis | **real** |
 | 5 | orders | Java 21 · Spring Boot | gRPC | Postgres + NATS | stub |
 | 6 | payment | Rust · Axum | gRPC | Postgres | stub |
-| 7 | users | Python 3.12 · FastAPI | gRPC | Postgres | stub |
+| 7 | **users** | **Python 3.12 · FastAPI + gRPC** | gRPC | Postgres | **real** |
 | 8 | shipping | Kotlin · Ktor | gRPC | Postgres + NATS | stub |
 | 9 | inventory | Go · gRPC-first | gRPC | Postgres | stub |
 | 10 | recommendation | Python · FastAPI + ONNX | gRPC | Postgres (replica) | stub |
@@ -97,9 +100,13 @@ deploy/compose/               # compose.yaml (backbone) + profile overlays
   └── initdb/                 # creates per-service databases
 proto/                        # gRPC contracts (single source of truth)
   ├── buf.yaml / buf.gen.yaml
-  ├── catalogue/v1/catalogue.proto
-  └── gen/go/                 # COMMITTED generated stubs (linguist-generated)
+  ├── catalogue/v1 · cart/v1 · users/v1   # service contracts
+  ├── gen/go/                 # COMMITTED Go stubs (linguist-generated)
+  └── gen/python/             # COMMITTED Python stubs (linguist-generated)
 services/catalogue/           # first real service (Go)
+services/bff/                 # Hono BFF (TS)
+services/cart/                # Cart (Node/TS)
+services/users/               # Users (Python · FastAPI + gRPC)
 ```
 
 ---
@@ -170,6 +177,15 @@ Measured footprint: `core` profile idles around **~0.8 GB** total (otel-lgtm is
 - Net effect: a single trace shows `gRPC RPC → {Postgres query, Meili HTTP}`.
   This is the pattern every future service should follow.
 
+**Users (Python) applies the same pattern with the Python SDK:** the
+`opentelemetry-instrumentation-grpc` aio server interceptor produces one SERVER
+span per RPC, `opentelemetry-instrumentation-asyncpg` adds child spans per
+query, and FastAPI (health surface) is instrumented with health paths excluded.
+Validated: `GetUser`/`CreateUser` traces show `gRPC RPC → Postgres query` in
+Tempo. Users runs gRPC (:9090, the inter-service contract) and a FastAPI
+liveness/readiness surface (:8080, used by the container healthcheck) in one
+asyncio loop.
+
 ---
 
 ## 10. Incidents & reliability (direction)
@@ -188,8 +204,10 @@ Compose-native injection.) See §11 for sequencing.
 
 - **v0.2 (in progress):** read path. ✅ Catalogue, ✅ BFF, ✅ Cart (Redis),
   ✅ **BFF → Cart wired** (`bff → cart → redis` trace validated; BFF exposes
-  `/api/cart/:userId` GET/POST-items/DELETE-item/DELETE). Next: **Users**
-  (Postgres) and a real **Frontend** consuming the BFF.
+  `/api/cart/:userId` GET/POST-items/DELETE-item/DELETE), ✅ **Users** (Python ·
+  FastAPI + gRPC · Postgres; `gRPC RPC → Postgres query` traces validated).
+  Next: **wire BFF → Users** (account endpoints) and a real **Frontend**
+  consuming the BFF.
 - **v0.3+:** orders/payment/checkout write path with NATS events.
 - **Chaos:** Toxiproxy + (k3d) Chaos Mesh + the first incident scenarios.
 - **Incident framework:** `tools/incident-simulator/` orchestrating labeled

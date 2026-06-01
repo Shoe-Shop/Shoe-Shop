@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+// Users service: the system of record for shopper accounts. Backed by
+// PostgreSQL (database-per-service). Consumed by the BFF (and later Orders)
+// over gRPC.
+package users.v1;
+
+option go_package = "github.com/shoeshop/shoe-shop/proto/gen/go/users/v1;usersv1";
+
+// A registered shopper account.
+message User {
+  string id = 1;
+  string email = 2;
+  string full_name = 3;
+  // RFC 3339 / ISO 8601 timestamp of when the account was created.
+  string created_at = 4;
+}
+
+message CreateUserRequest {
+  string email = 1;
+  string full_name = 2;
+}
+
+message CreateUserResponse {
+  User user = 1;
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message GetUserByEmailRequest {
+  string email = 1;
+}
+
+message GetUserByEmailResponse {
+  User user = 1;
+}
+
+message ListUsersRequest {
+  // 1-based page number. Defaults to 1 when unset.
+  int32 page = 1;
+  // Page size. Defaults to 20, capped at 100.
+  int32 page_size = 2;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  // Total number of accounts (not just this page).
+  int32 total = 2;
+}
+
+// UsersService is the account read/write path over gRPC.
+service UsersService {
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc GetUserByEmail(GetUserByEmailRequest) returns (GetUserByEmailResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
