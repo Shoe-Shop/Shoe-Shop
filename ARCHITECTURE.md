@@ -215,7 +215,10 @@ Measured footprint: `core` profile idles around **~0.8 GB** total (otel-lgtm is
 - [ ] **Traces** — OTLP spans in Tempo. *(Already true for all 4 real services.)*
 - [ ] **Metrics** — a `MeterProvider` exports OTLP metrics to Prometheus; RED
       (rate/errors/duration) present; the latency histogram carries **exemplars**
-      stamped with `trace_id`.
+      stamped with `trace_id` **where the stack's OTel SDK supports them** (Go,
+      Python). For stacks that cannot emit metric exemplars (JS/TS — verified, see
+      the **Per-stack exemplar policy** below), this clause is satisfied by the
+      bundle's Tempo metrics-generator instead; app-level RED is still required.
 - [ ] **Logs** — structured logs exported (or bridged) to Loki, **each in-request
       record carrying `trace_id` + `span_id`**.
 - [ ] **Events** — domain/lifecycle events (OTel Events API where the SDK
@@ -231,6 +234,42 @@ The join keys (the same four every signal must share) are specified in
 consistent resource attributes (`service.namespace=shoeshop`, `service.name`,
 `deployment.environment=local` — already flowing from `OTEL_RESOURCE_ATTRIBUTES`
 in every Compose service).
+
+### Per-stack exemplar policy (the JS/TS exemplar gap — verified, durable)
+
+**The finding (do not re-investigate from scratch — it is settled):**
+**OpenTelemetry-JS does not emit metric exemplars.** Verified at the SDK source
+(`@opentelemetry/sdk-metrics` **2.7.1**, the latest release, 2026-06): the
+histogram aggregator (`HistogramAccumulation.record`) stores only bucket counts and
+discards the trace context, `toMetricData()` emits **no** `exemplars` field, and the
+OTLP protobuf serializer (`metrics-serializer.js`) never writes the exemplar wire
+field (it is commented but unimplemented). The exemplar filter/reservoir classes
+ship in the package but are imported by **nothing** in the metric-storage pipeline;
+there is no `MeterProvider` option and no env var. An end-to-end test (record under
+a sampled span) and a live `query_exemplars` both return **zero exemplars**. Go and
+Python emit exemplars natively; **JS/TS (Cart, BFF) cannot.**
+
+**The policy (applies to every JS/TS service — Cart today, BFF next):**
+1. The service still emits **app-level RED** (counter + latency histogram by
+   method/status, correct resource attrs) over OTLP. This is required and works.
+2. The **metric↔trace exemplar** join (correlation-contract #2, a *SHOULD*) is
+   delegated to the LGTM bundle's **Tempo metrics-generator**, which is enabled by
+   default (`metrics_generator_processors: [service-graphs, local-blocks,
+   span-metrics]`, `remote_write … send_exemplars: true` — baked into the
+   `grafana/otel-lgtm` image's `tempo-config.yaml`). It derives
+   `traces_spanmetrics_*{service="<svc>"}` with `traceID` exemplars from the
+   service's **own traces**, pointing to the same `trace_id`s the service stamps
+   into its logs/events. Grafana's datasources are pre-provisioned for the
+   exemplar → Tempo → Loki pivot. This is language-agnostic and needs **no app code
+   and no bundle changes**.
+3. The **trace↔log/event** join (the *MUST*, correlation-contract #1) is native and
+   unaffected — JS captures `trace_id`/`span_id` on log/event records from the
+   active context.
+
+This is the documented per-stack workaround ADR-0002 anticipated ("some signals may
+need workarounds … logs and especially exemplars mature at different rates across
+Go / Node / Python"). It is **not** a defect to fix in our code — it is upstream SDK
+reality; revisit only if OTel-JS later wires exemplars.
 
 ### Telemetry coverage matrix
 
