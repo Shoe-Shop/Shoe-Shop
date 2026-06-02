@@ -6,11 +6,13 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-02 (Catalogue + Users + Cart MELT-complete — four signals
-> emitted and verified correlated in the LGTM bundle; Go reference + Python and
-> Node retrofits landed, §9. Cart carries a documented JS-stack exemplar caveat:
-> metric↔trace exemplars come from the bundle's Tempo metrics-generator, as
-> OpenTelemetry-JS does not emit them.)_
+> _Last updated: 2026-06-02 (BFF MELT-complete — **all 4 real services are now
+> four-signal MELT-complete**, verified correlated in the LGTM bundle; Go reference
+> + Python, Node and TS retrofits landed, §9. The retrofit phase is done. Both JS/TS
+> services (Cart + BFF) carry the documented JS-stack exemplar caveat: metric↔trace
+> exemplars come from the bundle's Tempo metrics-generator, as OpenTelemetry-JS does
+> not emit them. BFF's RED is HTTP-server-side from instrumentation-http, not a
+> hand-rolled interceptor.)_
 
 ---
 
@@ -69,17 +71,18 @@ containers contain real behaviour today. Everything else is a runnable
 placeholder. (Users lives in the `full` profile, so bring it up with
 `task up:full` — or, for validation, just `postgres`, `otel-lgtm`, `users`.)
 
-> **⚠️ Telemetry reality (the active gap, shrinking).** **Catalogue (Go), Users
-> (Python) and Cart (Node) are MELT-complete** — Metrics + Events + Logs + Traces
-> emitted and **verified correlated** in the LGTM bundle (§9). The one remaining
-> real service, **BFF (TS), is still traces only** — it initializes an OTel
-> `TracerProvider` and nothing else. Per ADR-0002 the golden standard is **four
-> correlated signals (MELT)**, so **3 of 11 services are MELT-complete**. The
-> immediate roadmap (§11) is to retrofit **BFF** against the Catalogue reference
-> and validate correlation — *before* new features. Coverage is tracked in the
-> matrix in §9. (Cart's metrics carry a documented JS-stack exemplar caveat — its
-> metric↔trace exemplars come from the bundle's Tempo metrics-generator, not the
-> OTel-JS SDK; see §9.)
+> **✅ Telemetry reality (the retrofit is complete).** **All four real services —
+> Catalogue (Go), Users (Python), Cart (Node) and BFF (TS) — are MELT-complete:**
+> Metrics + Events + Logs + Traces emitted and **verified correlated** in the LGTM
+> bundle (§9). Per ADR-0002 the golden standard is **four correlated signals
+> (MELT)**, so **4 of 11 services are MELT-complete** (the other 7 are
+> `traefik/whoami` stubs that emit nothing real). The v0.2-MELT retrofit phase is
+> done; the next step (§11) is moving Users `full → core` so the four validate
+> together on the default profile, then resuming features — each born
+> MELT-complete. Coverage is tracked in the matrix in §9. (Both JS/TS services —
+> Cart and BFF — carry a documented JS-stack exemplar caveat: their metric↔trace
+> exemplars come from the bundle's Tempo metrics-generator, not the OTel-JS SDK;
+> see the §9 Per-stack exemplar policy.)
 
 ---
 
@@ -281,7 +284,7 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 | catalogue | Go | ✅ | ✅ | ✅ | ✅ | ✅ (reference — verified correlated) |
 | users | Python | ✅ | ✅ | ✅ | ✅ | ✅ (first retrofit — verified correlated) |
 | cart | Node | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, see note) |
-| bff | TS | ⬜ | ⬜ | ⬜ | ✅ | ❌ (next) |
+| bff | TS | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, same JS gap as Cart) |
 
 > ✅ emitted & validated · ⬜ not yet · update a cell only after verifying the
 > signal in Grafana, not on writing the code.
@@ -299,6 +302,18 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 > from Cart's traces — language-agnostic and pointing to the same trace_ids Cart
 > stamps into its logs/events. This is the documented per-stack workaround ADR-0002
 > anticipated; the trace↔log/event join (the *MUST*) is native and fully proven.
+>
+> **† BFF Metrics — same JS-stack exemplar gap (verified in Docker).** BFF is the
+> same OpenTelemetry-JS family as Cart, so the exemplar finding is identical and not
+> re-litigated. BFF's RED is **HTTP-server-side**, emitted by
+> `@opentelemetry/instrumentation-http` (0.218) directly (verified in Docker — no
+> hand-rolled interceptor): with `OTEL_SEMCONV_STABILITY_OPT_IN=http` it emits the
+> stable `http_server_request_duration_seconds_*{service_name="bff"}` (rate via
+> `_count`, errors via `http_response_status_code`, e.g. `404`). Like Cart, OTel-JS
+> attaches **no metric exemplars** (`query_exemplars` on the app histogram returned
+> empty, live), so the metric↔trace join is provided by the bundle's Tempo
+> metrics-generator (`traces_spanmetrics_latency_bucket{service="bff"}` with
+> `traceID` exemplars). The trace↔log/event join is native and fully proven.
 
 ### Current Traces implementation (the ✅ column above)
 
@@ -321,7 +336,7 @@ added *alongside*, not replacing:
   span per RPC with child ioredis CLIENT spans (`gRPC RPC → redis command`). Now
   MELT-complete (subsection below).
 - **BFF (TS):** OTel auto-instrumentation; cross-service traces `bff → catalogue`
-  and `bff → cart → redis` validated in Tempo. Still traces-only (next retrofit).
+  and `bff → cart → redis` validated in Tempo. Now MELT-complete (subsection below).
 
 ### Catalogue MELT implementation (reference — verified correlated 2026-06-01)
 
@@ -461,6 +476,65 @@ exemplar gap is the cross-stack maturity ADR-0002 expected.
 > **No metric exemplars in OTel-JS** — the metric↔trace join is delegated to the
 > bundle's Tempo metrics-generator (see above).
 
+### BFF MELT implementation (TS retrofit — verified correlated 2026-06-02)
+
+The TS retrofit lives in [`services/bff/src/telemetry.ts`](services/bff/src/telemetry.ts),
+following the Cart (Node) retrofit — **same OTel-JS family**, so it reuses Cart's
+**one `NodeSDK`** wiring (tracer + meter + logger off the auto-detected resource) and
+its `log` / `event` fan-out helpers verbatim. APIs were **verified in Docker** before
+use. BFF is the **last** real traces-only service; finishing it makes **4 of 4 real
+services MELT-complete**. Where BFF diverges from Cart is the **RED surface**: BFF is
+a Hono HTTP server (`@hono/node-server`) + a gRPC **client** to catalogue/cart, not a
+gRPC server — so RED is **HTTP-server-side**, not gRPC.
+
+- **Metrics (M).** Verified in Docker: `@opentelemetry/instrumentation-http` (0.218)
+  **already emits an HTTP server duration histogram**, so — unlike the Go/Python/Cart
+  gRPC interceptor — RED needs **no hand-rolled recorder**. `telemetry.ts` opts into
+  the **stable** HTTP semconv (`OTEL_SEMCONV_STABILITY_OPT_IN=http`, set in code
+  before the instrumentation constructs) so it emits the seconds-scale
+  `http.server.request.duration` (stable attrs `http.request.method`,
+  `http.response.status_code`) rather than the legacy ms metric; a `View` aligns its
+  buckets with the cross-stack reference. In Prometheus:
+  `http_server_request_duration_seconds_*{service_name="bff"}` — rate via `_count`,
+  RED errors visible as `http_response_status_code="404"`. (`http.route` is absent
+  because Hono is fetch-based and the http instrumentation never sees the matched
+  route — verified; RED is keyed by method + status.) **Exemplar divergence
+  (verified):** identical to Cart — OTel-JS attaches no metric exemplars
+  (`query_exemplars` on `http_server_request_duration_seconds_bucket` returned empty,
+  live), so the metric↔trace link is provided by the bundle's Tempo metrics-generator
+  (`traces_spanmetrics_latency_bucket{service="bff"}` with `traceID` exemplars). See
+  the §9 matrix note and Per-stack exemplar policy.
+- **Logs (L).** The same `log` fan-out helper as Cart — stdout JSON (so
+  `task logs -- bff` works) **and** the Logs API → OTLP → Loki. **Verified in Docker:
+  the http SERVER span is active inside the Hono fetch handler** (Hono is fetch-based,
+  so this was the key check), so in-request records carry the active
+  `trace_id`/`span_id`. Loki labels: `service_name`, `service_namespace`,
+  `deployment_environment`; `scope_name="shoeshop/bff"` + `trace_id`/`span_id` per
+  record (the latter two are structured metadata, not stream labels).
+- **Events (E).** Logs API with the `eventName` field set, emitted inside the request
+  span — modest, read-path domain events: `bff.products.listed`, `bff.product.viewed`,
+  `bff.search.performed`, `bff.cart.viewed`. The name lands in the Loki **body**;
+  events are told apart from logs by `scope_name="shoeshop/bff"` + body. Richer domain
+  events arrive with the v0.3 NATS write path.
+- **Traces (T).** Unchanged (`bff → catalogue` and `bff → cart → redis`).
+- **Correlation proven (in the LGTM bundle, 2026-06-02).** One `trace_id` joins
+  **M → T → L/E**: a `traces_spanmetrics_latency_bucket{service="bff",
+  span_name="grpc.catalogue.v1.CatalogueService/GetProduct",
+  status_code="STATUS_CODE_ERROR"}` exemplar (trace_id `d84b3898…`) resolves in Tempo
+  (200) and selects that request's `"downstream gRPC error"` warn log in Loki
+  (`http_route="/api/products/:id"`, `rpc_grpc_status_code="NOT_FOUND"`,
+  `http_response_status_code="404"`); a SearchProducts exemplar (`2d092957…`) resolves
+  the same way to its `bff.search.performed` **event** (`search.query="run"`). App RED
+  errors are visible (`http_server_request_duration_seconds_count{…status_code="404"}`).
+
+> **Verified TS OTel set** (same as Cart — all present transitively, declared as
+> direct deps): `@opentelemetry/sdk-node` `0.218.0` · `auto-instrumentations-node`
+> `0.76.0` (incl. `instrumentation-http` `0.218.0`) · `sdk-metrics` `2.7.1` ·
+> `sdk-logs`/`api-logs`/`exporter-metrics-otlp-grpc`/`exporter-logs-otlp-grpc`
+> `0.218.0` · `api` `1.9.1`. **No metric exemplars in OTel-JS** — the metric↔trace
+> join is delegated to the bundle's Tempo metrics-generator (see above). RED is the
+> http instrumentation's own metric (no interceptor).
+
 ---
 
 ## 10. Incidents & reliability (direction)
@@ -490,19 +564,21 @@ unlabeled, unrecoverable telemetry.
   `/api/cart/:userId` GET/POST-items/DELETE-item/DELETE), ✅ **Users** (Python ·
   FastAPI + gRPC · Postgres; `gRPC RPC → Postgres query` traces validated). All
   **traces-only** (see §9 / the §2 telemetry note).
-- **v0.2-MELT (active — the direction correction, ADR-0002):** make the four real
-  services **MELT-complete** before any new feature. Sequence:
+- **v0.2-MELT (retrofit done — the direction correction, ADR-0002):** make the four
+  real services **MELT-complete** before any new feature. Sequence:
   1. ✅ docs-first persist — ADR-0002, §9 standard + Definition of Done +
      coverage matrix, bounded `docs/dataset/` track;
   2. ✅ shared four-signal **telemetry bootstrap** on the reference stack (Go) —
      SDK APIs verified in Docker (`services/catalogue/internal/telemetry/`);
-  3. **retrofit** — ✅ Catalogue (reference) · ✅ Users (Python, verified
-     correlated) · ✅ Cart (Node, verified correlated — JS exemplars via the
-     bundle's Tempo metrics-generator, §9); **next:** BFF (TS);
-  4. ✅ for Catalogue + Users + Cart: all four signals validated correlated in
-     Grafana/Tempo/Loki/Prometheus (matrix cells flipped); repeat per retrofit;
-  5. move **Users → `core`** so the four validate together on the default profile
-     (still pending — Users remains in the `full` profile for now).
+  3. **retrofit** — ✅ Catalogue (reference) · ✅ Users (Python) · ✅ Cart (Node) ·
+     ✅ **BFF (TS)** (all verified correlated; the two JS/TS services get metric↔trace
+     exemplars via the bundle's Tempo metrics-generator, §9; BFF's RED is
+     HTTP-server-side from `instrumentation-http`, not an interceptor) — **done, all
+     4 real services MELT-complete**;
+  4. ✅ for all four: all four signals validated correlated in
+     Grafana/Tempo/Loki/Prometheus (matrix cells flipped);
+  5. **next:** move **Users → `core`** so the four validate together on the default
+     profile (still pending — Users remains in the `full` profile for now).
 - **Then resume features (each born MELT-complete):** wire **BFF → Users**
   (account endpoints), a real **Frontend** consuming the BFF.
 - **v0.3+:** orders/payment/checkout **write path** with NATS events — where
@@ -511,9 +587,10 @@ unlabeled, unrecoverable telemetry.
   labeled scenarios; `(time_window, root_cause)` records per the
   [`docs/dataset/`](docs/dataset/) schema; annotations in Grafana.
 
-**Recommended sequencing:** finish the MELT retrofit on the existing 4 services
-*before* adding more — telemetry debt is cheapest to pay now (4 services, no
-drift), and every later service then inherits the standard by construction.
+**Recommended sequencing:** the MELT retrofit on the existing 4 services is now
+**complete** — telemetry debt was paid at its cheapest point (4 services, no drift),
+and every later service inherits the standard by construction. Next is the small
+Users `full → core` compose move (step 5), then features resume born MELT-complete.
 Incidents come *after* enough real, MELT-complete services exist to break.
 
 ---

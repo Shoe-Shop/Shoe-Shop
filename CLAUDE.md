@@ -12,11 +12,13 @@ future AI SRE ("project 2"). The storefront is the vehicle, not the goal; see
 **[ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)**. Four
 services are real today (**Catalogue** Go, **BFF** TS, **Cart** Node, **Users**
 Python) + the 5 infra containers; the rest are `traefik/whoami` stubs.
-**Catalogue (Go), Users (Python) and Cart (Node) are MELT-complete** (four signals
-verified correlated); **BFF (TS) is still traces-only** — **3 of 11 are
-MELT-complete** (the active gap). See ARCHITECTURE.md §2 / §9. Note: Cart's
-metric↔trace **exemplars come from the bundle's Tempo metrics-generator**, because
-OpenTelemetry-JS does not emit metric exemplars (verified; documented in §9).
+**All 4 real services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
+BFF TS — four signals verified correlated) — **4 of 11 MELT-complete; the retrofit
+phase is done.** See ARCHITECTURE.md §2 / §9. Note: both JS/TS services (Cart **and**
+BFF) get their metric↔trace **exemplars from the bundle's Tempo metrics-generator**,
+because OpenTelemetry-JS does not emit metric exemplars (verified; documented in §9).
+BFF's RED is HTTP-server-side from `instrumentation-http` (not a hand-rolled
+interceptor).
 
 ## Hard rules
 - **No hallucination.** Verify against the code/registry before claiming things.
@@ -56,9 +58,12 @@ Make the 4 real services **MELT-complete before any new feature.** Sequence:
 3. retrofit against the Catalogue reference (verify each stack's SDK APIs in
    Docker — logs/events maturity differs by language; validate correlated, flip
    §9 cells): ✅ **Users (Python)** (`services/users/app/telemetry.py`) ·
-   ✅ **Cart (Node)** (`services/cart/src/telemetry.ts`; JS has no metric
-   exemplars → metric↔trace via the bundle's Tempo metrics-generator, §9);
-   **Next:** **BFF (TS)**.
-4. Move **Users `full` → `core`** so the 4 validate together on the default profile.
+   ✅ **Cart (Node)** (`services/cart/src/telemetry.ts`) ·
+   ✅ **BFF (TS)** (`services/bff/src/telemetry.ts`; HTTP-server-side RED from
+   `instrumentation-http` + stable semconv opt-in, no interceptor; JS has no metric
+   exemplars → metric↔trace via the bundle's Tempo metrics-generator, §9) —
+   **retrofit done: all 4 real services MELT-complete & verified correlated**.
+4. **Next:** move **Users `full` → `core`** so the 4 validate together on the
+   default profile (compose-only; still pending).
 5. *Then* resume features: **BFF → Users**, a real **Frontend**, v0.3 NATS write
    path. Incident/chaos framework comes *after* the 4 are MELT-complete.

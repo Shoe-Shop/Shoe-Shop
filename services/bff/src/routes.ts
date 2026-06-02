@@ -3,10 +3,13 @@
 import { Hono, type Context } from 'hono';
 import { catalogue, grpc } from './catalogue-client';
 import { cart } from './cart-client';
+import { log, event } from './telemetry';
 
 export const app = new Hono();
 
-// Map a downstream gRPC error to an HTTP status + JSON body.
+// Map a downstream gRPC error to an HTTP status + JSON body. Emitted inside the
+// request span, so the warn log carries the active trace_id/span_id (joins to the
+// trace in Tempo and to the http.server RED error in Prometheus).
 function grpcError(c: Context, e: unknown) {
   const err = e as grpc.ServiceError;
   const status =
@@ -15,6 +18,11 @@ function grpcError(c: Context, e: unknown) {
       : err.code === grpc.status.NOT_FOUND
         ? 404
         : 500;
+  log.warn('downstream gRPC error', {
+    'http.route': c.req.routePath,
+    'rpc.grpc.status_code': grpc.status[err.code] ?? String(err.code),
+    'http.response.status_code': status,
+  });
   return c.json({ error: err.details || err.message }, status as 400 | 404 | 500);
 }
 
@@ -24,12 +32,14 @@ app.get('/api/products', async (c) => {
   const page = Number(c.req.query('page') ?? '1');
   const pageSize = Number(c.req.query('pageSize') ?? '20');
   const res = await catalogue.listProducts({ page, pageSize });
+  event('bff.products.listed', { page, 'page.size': pageSize, count: res.products?.length ?? 0 });
   return c.json(res);
 });
 
 app.get('/api/products/:id', async (c) => {
   try {
     const res = await catalogue.getProduct({ id: c.req.param('id') });
+    event('bff.product.viewed', { 'product.id': c.req.param('id') });
     return c.json(res);
   } catch (e) {
     return grpcError(c, e);
@@ -40,6 +50,7 @@ app.get('/api/search', async (c) => {
   const query = c.req.query('q') ?? '';
   const limit = Number(c.req.query('limit') ?? '20');
   const res = await catalogue.searchProducts({ query, limit });
+  event('bff.search.performed', { 'search.query': query, limit, count: res.products?.length ?? 0 });
   return c.json(res);
 });
 
@@ -50,6 +61,10 @@ app.get('/api/search', async (c) => {
 app.get('/api/cart/:userId', async (c) => {
   try {
     const res = await cart.getCart({ userId: c.req.param('userId') });
+    event('bff.cart.viewed', {
+      'user.id': c.req.param('userId'),
+      count: res.cart?.items?.length ?? 0,
+    });
     return c.json(res);
   } catch (e) {
     return grpcError(c, e);
