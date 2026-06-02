@@ -73,8 +73,9 @@ This is the most important section — do not assume more is built than is liste
 
 **Rule of thumb:** only Catalogue, the BFF, Cart, Users, + the 5 infra
 containers contain real behaviour today. Everything else is a runnable
-placeholder. (Users lives in the `full` profile, so bring it up with
-`task up:full` — or, for validation, just `postgres`, `otel-lgtm`, `users`.)
+placeholder. All four real services now live in the **`core` profile**, so a
+plain `task up:core` brings up the full MELT-complete set together (Users moved
+`full → core` in step 5; it depends only on the always-on Postgres + otel-lgtm).
 
 > **✅ Telemetry reality (the retrofit is complete).** **All four real services —
 > Catalogue (Go), Users (Python), Cart (Node) and BFF (TS) — are MELT-complete:**
@@ -82,9 +83,10 @@ placeholder. (Users lives in the `full` profile, so bring it up with
 > bundle (§9). Per ADR-0002 the golden standard is **four correlated signals
 > (MELT)**, so **4 of 11 services are MELT-complete** (the other 7 are
 > `traefik/whoami` stubs that emit nothing real). The v0.2-MELT retrofit phase is
-> done; the next step (§11) is moving Users `full → core` so the four validate
-> together on the default profile, then resuming features — each born
-> MELT-complete. Coverage is tracked in the matrix in §9. (Both JS/TS services —
+> done **and Users has been moved `full → core` (step 5)**, so all four
+> MELT-complete services now come up and validate together on the default
+> `core` profile; next is resuming features — each born MELT-complete. Coverage
+> is tracked in the matrix in §9. (Both JS/TS services —
 > Cart and BFF — carry a documented JS-stack exemplar caveat: their metric↔trace
 > exemplars come from the bundle's Tempo metrics-generator, not the OTel-JS SDK;
 > see the §9 Per-stack exemplar policy.)
@@ -155,8 +157,8 @@ services/users/               # Users (Python · FastAPI + gRPC)
 
 - **Prereqs:** Docker Desktop (WSL2). The `task` CLI. Nothing else is required —
   all language/codegen toolchains run in containers.
-- **Profiles (RAM dial):** `core` (6 svc, default), `full` (11 + Zitadel),
-  `lean-jvm` (capped JVM heaps).
+- **Profiles (RAM dial):** `core` (7 svc, default — incl. all 4 real services),
+  `full` (11 + Zitadel), `lean-jvm` (capped JVM heaps).
 - **Dual path:** `task dev` (Hybrid — infra in Docker, edited service native)
   vs `task up:core` / `up:full` (everything containerized).
 - **Common:** `task up:core`, `task ps`, `task logs -- <svc>`, `task down`,
@@ -171,8 +173,9 @@ services/users/               # Users (Python · FastAPI + gRPC)
   Loki/Prometheus queries: the WSL2 host clock can jump, so `now()-N` windows can
   silently miss recently-written data.
 
-Measured footprint: `core` profile idles around **~0.8 GB** total (otel-lgtm is
-~90% of it); well within an 8 GB WSL2 budget.
+Measured footprint: `core` profile idles around **~0.9 GB** total (measured
+~0.92 GB with all 7 services up — Users adds ~60 MiB; otel-lgtm is still ~70% of
+the total); well within an 8 GB WSL2 budget.
 
 ---
 
@@ -633,8 +636,12 @@ unlabeled, unrecoverable telemetry.
      4 real services MELT-complete**;
   4. ✅ for all four: all four signals validated correlated in
      Grafana/Tempo/Loki/Prometheus (matrix cells flipped);
-  5. **next:** move **Users → `core`** so the four validate together on the default
-     profile (still pending — Users remains in the `full` profile for now).
+  5. ✅ moved **Users `full → core`** (compose-only) so all four real services come
+     up and validate together on the default profile — verified fresh on `core`:
+     four correlated signals for a `ListUsers` request (trace in Tempo 200 with a
+     nested asyncpg Postgres span; `rpc_server_*` RED + app-level `trace_id`
+     exemplar in Prometheus; correlated in-request log + domain event in Loki),
+     `core` idles ~0.92 GB.
 - **Then resume features (each born MELT-complete):** wire **BFF → Users**
   (account endpoints), a real **Frontend** consuming the BFF.
 - **v0.3+:** orders/payment/checkout **write path** with NATS events — where
@@ -645,9 +652,10 @@ unlabeled, unrecoverable telemetry.
 
 **Recommended sequencing:** the MELT retrofit on the existing 4 services is now
 **complete** — telemetry debt was paid at its cheapest point (4 services, no drift),
-and every later service inherits the standard by construction. Next is the small
-Users `full → core` compose move (step 5), then features resume born MELT-complete.
-Incidents come *after* enough real, MELT-complete services exist to break.
+and every later service inherits the standard by construction. The Users `full → core`
+compose move (step 5) is **done**, so the four validate together on the default
+profile; features now resume born MELT-complete. Incidents come *after* enough real,
+MELT-complete services exist to break.
 
 ---
 

@@ -63,7 +63,10 @@ Make the 4 real services **MELT-complete before any new feature.** Sequence:
    `instrumentation-http` + stable semconv opt-in, no interceptor; JS has no metric
    exemplars → metric↔trace via the bundle's Tempo metrics-generator, §9) —
    **retrofit done: all 4 real services MELT-complete & verified correlated**.
-4. **Next:** move **Users `full` → `core`** so the 4 validate together on the
-   default profile (compose-only; still pending).
-5. *Then* resume features: **BFF → Users**, a real **Frontend**, v0.3 NATS write
-   path. Incident/chaos framework comes *after* the 4 are MELT-complete.
+4. ✅ **Done:** moved **Users `full` → `core`** (compose-only) so the 4 validate
+   together on the default profile — verified fresh on `core` (four correlated
+   signals for a `ListUsers` request; `core` idles ~0.92 GB). All 4 real services
+   now live in `core`; a plain `task up:core` brings up the MELT-complete set.
+5. **Next:** resume features (each born MELT-complete): **BFF → Users** account
+   endpoints, a real **Frontend**, v0.3 NATS write path. Incident/chaos framework
+   comes *after* the 4 are MELT-complete.

@@ -77,7 +77,7 @@ tasks:
       - task: obs
 
   up:core:
-    desc: "Start platform + the 6 CORE services (default daily profile)"
+    desc: "Start platform + the 7 CORE services (default daily profile)"
     deps: [_ensure-env]
     cmds:
       - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} up -d --remove-orphans

@@ -1,5 +1,8 @@
 # Shoe Shop — CORE profile overlay (merged on top of compose.yaml).
-# The 6 services needed for an end-to-end checkout trace.
+# The 7 services for the default daily profile: the end-to-end checkout-trace
+# path (frontend, bff, catalogue, cart, orders, payment) plus Users — the four
+# real MELT-complete services (catalogue, cart, bff, users) all live here so
+# they validate together on the default profile.
 #
 # Each service currently runs a `traefik/whoami` STUB so the topology, ports,
 # memory limits, and dependency graph are real and runnable today. When a
@@ -135,6 +138,43 @@ services:
       retries: 5
       start_period: 20s
     mem_limit: 192m
+
+  # ── Users — Python · FastAPI · gRPC (Postgres) ───────────────────
+  # Real service (v0.2, MELT-complete). gRPC API backed by Postgres
+  # (database-per-service); FastAPI serves /healthz + /readyz. Build context is
+  # the repo root so the committed Python gRPC stubs are in scope. Depends only
+  # on postgres + otel-lgtm (both in the always-on base), so it lives in `core`
+  # and the four real MELT services validate together on the default profile.
+  # See services/users/Dockerfile.
+  users:
+    build:
+      context: ../../
+      dockerfile: services/users/Dockerfile
+    image: shoeshop/users:dev
+    restart: unless-stopped
+    networks: [shoeshop]
+    container_name: shoeshop-users
+    environment:
+      OTEL_SERVICE_NAME: users
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      USERS_GRPC_ADDR: "0.0.0.0:9090"
+      USERS_HEALTH_PORT: "8080"
+      USERS_DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/users"
+    ports:
+      - "${USERS_PORT:-9006}:9090"
+    depends_on:
+      postgres: { condition: service_healthy }
+      otel-lgtm: { condition: service_started }
+    healthcheck:
+      # IPv4 (127.0.0.1) not "localhost" (ADR-0001 #10). FastAPI liveness probe.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz').status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 256m
 
   # ── Orders — Java 21 · Spring Boot (Postgres + NATS) ─────────────
   orders:
