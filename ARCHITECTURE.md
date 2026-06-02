@@ -602,9 +602,10 @@ Failure is a **first-class feature**, not an afterthought. The plan: a curated
 catalogue of realistic, **labeled, reproducible** incidents — each with a known
 root cause, a real propagation path, and observable symptoms — so the running
 storefront genuinely degrades and the failure can be studied end-to-end across
-**all four MELT signals**. (Design inspired by the author's earlier
-`Sock-Shop-New` incident set, upgraded to lean on OpenTelemetry and
-Compose-native injection.) See §11 for sequencing.
+**all four MELT signals**. (The incident design is our own — informed by years
+of running production systems and earlier incident-engineering work — built here
+from the ground up to lean on OpenTelemetry and Compose-native injection.) See
+§11 for sequencing.
 
 Each incident is the **supervised target** of the project-2 dataset: a labeled
 `(time_window, root_cause, …)` record over a window of correlated MELT. The label
