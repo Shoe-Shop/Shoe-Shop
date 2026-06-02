@@ -6,9 +6,11 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-01 (Catalogue + Users MELT-complete — four signals
-> emitted and verified correlated in the LGTM bundle; Go reference + Python
-> first retrofit landed, §9)_
+> _Last updated: 2026-06-02 (Catalogue + Users + Cart MELT-complete — four signals
+> emitted and verified correlated in the LGTM bundle; Go reference + Python and
+> Node retrofits landed, §9. Cart carries a documented JS-stack exemplar caveat:
+> metric↔trace exemplars come from the bundle's Tempo metrics-generator, as
+> OpenTelemetry-JS does not emit them.)_
 
 ---
 
@@ -67,15 +69,17 @@ containers contain real behaviour today. Everything else is a runnable
 placeholder. (Users lives in the `full` profile, so bring it up with
 `task up:full` — or, for validation, just `postgres`, `otel-lgtm`, `users`.)
 
-> **⚠️ Telemetry reality (the active gap, shrinking).** **Catalogue (Go) and
-> Users (Python) are MELT-complete** — Metrics + Events + Logs + Traces emitted
-> and **verified correlated** in the LGTM bundle (§9). The other two real services
-> (BFF, Cart) are still **traces only** — each initializes an OTel
+> **⚠️ Telemetry reality (the active gap, shrinking).** **Catalogue (Go), Users
+> (Python) and Cart (Node) are MELT-complete** — Metrics + Events + Logs + Traces
+> emitted and **verified correlated** in the LGTM bundle (§9). The one remaining
+> real service, **BFF (TS), is still traces only** — it initializes an OTel
 > `TracerProvider` and nothing else. Per ADR-0002 the golden standard is **four
-> correlated signals (MELT)**, so **2 of 11 services are MELT-complete**. The
-> immediate roadmap (§11) is to retrofit Cart → BFF against the Catalogue
-> reference and validate correlation — *before* new features. Coverage is tracked
-> in the matrix in §9.
+> correlated signals (MELT)**, so **3 of 11 services are MELT-complete**. The
+> immediate roadmap (§11) is to retrofit **BFF** against the Catalogue reference
+> and validate correlation — *before* new features. Coverage is tracked in the
+> matrix in §9. (Cart's metrics carry a documented JS-stack exemplar caveat — its
+> metric↔trace exemplars come from the bundle's Tempo metrics-generator, not the
+> OTel-JS SDK; see §9.)
 
 ---
 
@@ -237,11 +241,25 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 |---------|-------|---|---|---|---|---------------|
 | catalogue | Go | ✅ | ✅ | ✅ | ✅ | ✅ (reference — verified correlated) |
 | users | Python | ✅ | ✅ | ✅ | ✅ | ✅ (first retrofit — verified correlated) |
-| cart | Node | ⬜ | ⬜ | ⬜ | ✅ | ❌ (next) |
-| bff | TS | ⬜ | ⬜ | ⬜ | ✅ | ❌ |
+| cart | Node | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, see note) |
+| bff | TS | ⬜ | ⬜ | ⬜ | ✅ | ❌ (next) |
 
 > ✅ emitted & validated · ⬜ not yet · update a cell only after verifying the
 > signal in Grafana, not on writing the code.
+>
+> **† Cart Metrics — the JS-stack exemplar divergence (verified in Docker).**
+> Cart emits full app-level RED (`rpc_server_requests_total` +
+> `rpc_server_duration_seconds_*` by `rpc_method`/`rpc_grpc_status_code`), but
+> **OpenTelemetry-JS does not attach metric exemplars** — verified by reading the
+> installed SDK source: the histogram aggregator (`sdk-metrics` 2.7.1, the latest
+> release) records bucket counts only and never an exemplar, and the OTLP protobuf
+> serializer never writes the exemplar field. So the metric↔trace join (correlation
+> contract #2, a *SHOULD*) is instead satisfied **server-side** by the LGTM
+> bundle's **Tempo metrics-generator** (`send_exemplars: true`, enabled by default),
+> which derives exemplar-bearing span metrics (`traces_spanmetrics_*{service="cart"}`)
+> from Cart's traces — language-agnostic and pointing to the same trace_ids Cart
+> stamps into its logs/events. This is the documented per-stack workaround ADR-0002
+> anticipated; the trace↔log/event join (the *MUST*) is native and fully proven.
 
 ### Current Traces implementation (the ✅ column above)
 
@@ -260,8 +278,11 @@ added *alongside*, not replacing:
   query` in Tempo. Users runs gRPC (:9090, the inter-service contract) and a
   FastAPI liveness/readiness surface (:8080, used by the healthcheck) in one
   asyncio loop.
-- **Cart (Node) / BFF (TS):** OTel auto-instrumentation; cross-service traces
-  `bff → catalogue` and `bff → cart → redis` validated in Tempo.
+- **Cart (Node):** `@opentelemetry/auto-instrumentations-node` → one gRPC SERVER
+  span per RPC with child ioredis CLIENT spans (`gRPC RPC → redis command`). Now
+  MELT-complete (subsection below).
+- **BFF (TS):** OTel auto-instrumentation; cross-service traces `bff → catalogue`
+  and `bff → cart → redis` validated in Tempo. Still traces-only (next retrofit).
 
 ### Catalogue MELT implementation (reference — verified correlated 2026-06-01)
 
@@ -344,6 +365,63 @@ documented inline — this is the cross-stack maturity ADR-0002 expected to surf
 > instrumentation `grpc`/`asyncpg`/`fastapi` 0.63b1. Metrics + logs + events
 > wired by hand in `app/telemetry.py`.
 
+### Cart MELT implementation (Node retrofit — verified correlated 2026-06-02)
+
+The Node retrofit lives in [`services/cart/src/telemetry.ts`](services/cart/src/telemetry.ts),
+following the Catalogue reference: **one `NodeSDK`** wires tracer + meter + logger
+providers off NodeSDK's auto-detected resource, so every signal agrees on
+`service.name`/`service.namespace`/`deployment.environment` (from the `OTEL_*`
+compose env). All SDK APIs were **verified in Docker** against the installed
+versions before use. Where Node diverges from Go/Python is documented inline — the
+exemplar gap is the cross-stack maturity ADR-0002 expected.
+
+- **Metrics (M).** The gRPC auto-instrumentation emits **spans only** (no server
+  metrics), so — like the Go/Python interceptor — a grpc-js **server interceptor**
+  (`ServerInterceptingCall` + `ResponderBuilder.withSendStatus`) records **RED**:
+  `rpc.server.requests` (counter) + `rpc.server.duration` (histogram, seconds) by
+  `rpc.method`/`rpc.grpc.status_code`. Second-scale buckets via a `View` using the
+  sdk-metrics 2.x data-style aggregation (`{ type: EXPLICIT_BUCKET_HISTOGRAM,
+  options: { boundaries } }`). In Prometheus: `rpc_server_duration_seconds_*` +
+  `rpc_server_requests_total` (RED errors visible as
+  `rpc_grpc_status_code="INVALID_ARGUMENT"`).
+  **Exemplar divergence (verified):** OpenTelemetry-JS (sdk-metrics 2.7.1, latest)
+  does **not** attach metric exemplars — the histogram aggregator records bucket
+  counts only and the OTLP serializer never writes the exemplar field (read from
+  the installed SDK source; `query_exemplars` on `rpc_server_duration_seconds_bucket`
+  returns empty, live). The metric↔trace link is instead provided by the LGTM
+  bundle's **Tempo metrics-generator** (`send_exemplars: true`), whose
+  `traces_spanmetrics_latency_bucket{service="cart"}` carries `traceID` exemplars
+  derived from Cart's traces. This is the JS-stack workaround; see the §9 matrix
+  note.
+- **Logs (L).** A small `log` helper fans out to **stdout JSON** (so
+  `task logs -- cart` still works) **and** the Logs API → OTLP → Loki. In-request
+  records carry the active `trace_id`/`span_id` (captured automatically by the Logs
+  API from the active context). Loki labels: `service_name`, `service_namespace`,
+  `deployment_environment`, `scope_name="shoeshop/cart"`; `trace_id`/`span_id` per
+  record.
+- **Events (E).** Domain events use the **Logs API with the `eventName` field set**
+  (`logger.emit({ eventName, body, attributes })`) — the JS equivalent of Go's
+  `Record.SetEventName` (`cart.viewed`, `cart.item.added`, `cart.item.removed`,
+  `cart.cleared`). Emitted inside the request span so they carry `trace_id`/
+  `span_id`. As with Go/Python, the event name lands in the log **body** (Loki does
+  not promote `event_name` to a label); events are told apart from logs by
+  `scope_name="shoeshop/cart"` + body.
+- **Traces (T).** Unchanged (`gRPC RPC → redis command`).
+- **Correlation proven (in the LGTM bundle).** One `trace_id` joins **M → T → L/E**:
+  an exemplar on `traces_spanmetrics_latency_bucket{service="cart",
+  span_name="grpc.cart.v1.CartService/GetCart", status_code="STATUS_CODE_ERROR"}`
+  (trace_id `9a872000…`) resolves in Tempo (200) and selects that request's record
+  in Loki (`{service_name="cart"} | trace_id="9a872000…"` → the
+  `"rejected cart request"` warn log); an AddItem exemplar (`ecc0c4be…`) resolves
+  the same way to its `cart.item.added` **event**.
+
+> **Verified Node OTel set** (all already present transitively — declared as direct
+> deps): `@opentelemetry/sdk-node` `0.218.0` · `sdk-metrics` `2.7.1` ·
+> `sdk-logs`/`api-logs`/`exporter-metrics-otlp-grpc`/`exporter-logs-otlp-grpc`
+> `0.218.0` · `api` `1.9.1` · `@grpc/grpc-js` `1.14.4` (server interceptor).
+> **No metric exemplars in OTel-JS** — the metric↔trace join is delegated to the
+> bundle's Tempo metrics-generator (see above).
+
 ---
 
 ## 10. Incidents & reliability (direction)
@@ -380,8 +458,9 @@ unlabeled, unrecoverable telemetry.
   2. ✅ shared four-signal **telemetry bootstrap** on the reference stack (Go) —
      SDK APIs verified in Docker (`services/catalogue/internal/telemetry/`);
   3. **retrofit** — ✅ Catalogue (reference) · ✅ Users (Python, verified
-     correlated); **next:** Cart → BFF;
-  4. ✅ for Catalogue + Users: all four signals validated correlated in
+     correlated) · ✅ Cart (Node, verified correlated — JS exemplars via the
+     bundle's Tempo metrics-generator, §9); **next:** BFF (TS);
+  4. ✅ for Catalogue + Users + Cart: all four signals validated correlated in
      Grafana/Tempo/Loki/Prometheus (matrix cells flipped); repeat per retrofit;
   5. move **Users → `core`** so the four validate together on the default profile
      (still pending — Users remains in the `full` profile for now).
