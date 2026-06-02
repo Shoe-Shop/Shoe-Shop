@@ -15,10 +15,13 @@ asyncpg==0.31.0
 fastapi==0.136.3
 uvicorn==0.48.0
 
-# OpenTelemetry: OTLP/gRPC export + auto-instrumentation for the gRPC server,
-# asyncpg queries, and the FastAPI health app. Endpoint/service-name come from
-# the standard OTEL_* env vars (configured in compose), per the catalogue
-# reference pattern (ARCHITECTURE.md §9).
+# OpenTelemetry — four correlated signals (MELT), per the catalogue reference
+# (ARCHITECTURE.md §9 / ADR-0002). Endpoint/service-name come from the standard
+# OTEL_* env vars (configured in compose). The traces/metrics/logs SDKs and the
+# OTLP/gRPC trace+metric+log exporters all ship in the two packages below; the
+# instrumentation packages add auto-spans for the gRPC server, asyncpg queries,
+# and the FastAPI health app (RED metrics + events + log bridge are wired in
+# app/telemetry.py — Python's gRPC instrumentation emits spans only).
 opentelemetry-sdk==1.42.1
 opentelemetry-exporter-otlp-proto-grpc==1.42.1
 opentelemetry-instrumentation-grpc==0.63b1

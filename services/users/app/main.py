@@ -61,13 +61,20 @@ def _enable_reflection(server: grpc.aio.Server) -> None:
 
 async def serve() -> None:
     cfg = config.load()
-    telemetry.setup(cfg.service_name)
+    tel = telemetry.setup(cfg.service_name)
+    # Bridge stdlib logging to OTLP/Loki (alongside the stdout JSON handler); in
+    # -request records pick up the active trace_id/span_id automatically.
+    logging.getLogger().addHandler(tel.logging_handler)
 
     pool = await db.create_pool(cfg.database_url)
     await db.wait_for_db(pool)
     await db.migrate(pool)
 
-    server = grpc.aio.server(interceptors=[aio_server_interceptor()])
+    # Tracing interceptor first (outermost) so its server span is active when the
+    # metrics interceptor records — that is what stamps the trace_id exemplar.
+    server = grpc.aio.server(
+        interceptors=[aio_server_interceptor(), tel.metrics_interceptor]
+    )
     users_pb2_grpc.add_UsersServiceServicer_to_server(UsersService(pool), server)
     _enable_reflection(server)
     server.add_insecure_port(cfg.grpc_addr)
@@ -105,6 +112,7 @@ async def serve() -> None:
     uv_server.should_exit = True
     await health_task
     await pool.close()
+    tel.shutdown()  # flush traces, metrics and logs
 
 
 def main() -> None:

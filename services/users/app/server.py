@@ -5,12 +5,16 @@ Reads and writes go to PostgreSQL via asyncpg. asyncpg is OTel-instrumented
 request -- the catalogue reference pattern, in Python.
 """
 
+import logging
 import uuid
 
 import asyncpg
 import grpc
 
+from app import telemetry
 from users.v1 import users_pb2, users_pb2_grpc
+
+log = logging.getLogger("users.service")
 
 _DEFAULT_PAGE_SIZE = 20
 _MAX_PAGE_SIZE = 100
@@ -43,11 +47,18 @@ class UsersService(users_pb2_grpc.UsersServiceServicer):
                 request.full_name,
             )
         except asyncpg.UniqueViolationError:
+            log.warning("create user rejected: duplicate email", extra={"user.email": email})
             await context.abort(
                 grpc.StatusCode.ALREADY_EXISTS,
                 f"user with email {email!r} already exists",
             )
-        return users_pb2.CreateUserResponse(user=_row_to_user(row))
+        user = _row_to_user(row)
+        log.info("created user", extra={"user.id": user.id, "user.email": user.email})
+        telemetry.event(
+            "users.user.created",
+            {"user.id": user.id, "user.email": user.email},
+        )
+        return users_pb2.CreateUserResponse(user=user)
 
     async def GetUser(self, request, context):
         if not request.id:
@@ -62,10 +73,13 @@ class UsersService(users_pb2_grpc.UsersServiceServicer):
             f"SELECT {_USER_COLUMNS} FROM users WHERE id = $1", user_id
         )
         if row is None:
+            log.warning("user not found", extra={"user.id": request.id})
             await context.abort(
                 grpc.StatusCode.NOT_FOUND, f"user {request.id!r} not found"
             )
-        return users_pb2.GetUserResponse(user=_row_to_user(row))
+        user = _row_to_user(row)
+        telemetry.event("users.user.viewed", {"user.id": user.id})
+        return users_pb2.GetUserResponse(user=user)
 
     async def GetUserByEmail(self, request, context):
         email = request.email.strip().lower()
@@ -75,10 +89,13 @@ class UsersService(users_pb2_grpc.UsersServiceServicer):
             f"SELECT {_USER_COLUMNS} FROM users WHERE email = $1", email
         )
         if row is None:
+            log.warning("user not found by email", extra={"user.email": email})
             await context.abort(
                 grpc.StatusCode.NOT_FOUND, f"user with email {email!r} not found"
             )
-        return users_pb2.GetUserByEmailResponse(user=_row_to_user(row))
+        user = _row_to_user(row)
+        telemetry.event("users.user.viewed", {"user.id": user.id})
+        return users_pb2.GetUserByEmailResponse(user=user)
 
     async def ListUsers(self, request, context):
         page_size = request.page_size
@@ -93,6 +110,14 @@ class UsersService(users_pb2_grpc.UsersServiceServicer):
             f"LIMIT $1 OFFSET $2",
             page_size,
             offset,
+        )
+        log.info(
+            "listed users",
+            extra={"page": page, "page_size": page_size, "returned": len(rows), "total": int(total)},
+        )
+        telemetry.event(
+            "users.users.listed",
+            {"page": page, "returned": len(rows), "total": int(total)},
         )
         return users_pb2.ListUsersResponse(
             users=[_row_to_user(r) for r in rows],
