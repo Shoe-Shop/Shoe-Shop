@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/stats"
 
 	cataloguev1 "github.com/shoeshop/shoe-shop/proto/gen/go/catalogue/v1"
 	"github.com/shoeshop/shoe-shop/services/catalogue/internal/catalogue"
@@ -82,10 +83,15 @@ func run() error {
 
 	// otelgrpc StatsHandler provides the server spans; its built-in metrics are
 	// disabled (no-op meter) so the catalogue's own interceptor owns the RED
-	// metrics with controlled buckets and trace_id exemplars.
+	// metrics with controlled buckets and trace_id exemplars. The filter drops
+	// health-probe RPCs from traces (and thus the derived span-metrics), matching
+	// the RED interceptor's skip — so neither signal is polluted by healthchecks.
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler(
 			otelgrpc.WithMeterProvider(noopmetric.NewMeterProvider()),
+			otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
+				return !telemetry.IsHealthMethod(info.FullMethodName)
+			}),
 		)),
 		grpc.ChainUnaryInterceptor(tel.UnaryInterceptor),
 	)

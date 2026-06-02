@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -12,8 +13,23 @@ import (
 )
 
 // scopeName is the instrumentation scope for the catalogue's own meter, logger
-// and events — distinct from the otelgrpc/otelpgx instrumentation scopes.
-const scopeName = "github.com/shoeshop/shoe-shop/services/catalogue"
+// and events — distinct from the otelgrpc/otelpgx instrumentation scopes. The
+// convention across every Shoe Shop service is `shoeshop/<svc>` (ARCHITECTURE.md
+// §9): events are told apart from logs by the OTel eventName, not by scope.
+const scopeName = "shoeshop/catalogue"
+
+// healthServicePrefix matches the standard gRPC health-checking service. Health
+// probes (the container healthcheck hits this every few seconds) are excluded
+// from RED metrics and from traces so they don't inflate the dataset — parity
+// with cart/bff/users, whose health surface is HTTP and never enters RED.
+const healthServicePrefix = "/grpc.health.v1.Health/"
+
+// IsHealthMethod reports whether a gRPC full method belongs to the health
+// service. Used both by the RED interceptor (skip recording) and by the otelgrpc
+// trace filter in main (skip the span, and thus the derived span-metrics).
+func IsHealthMethod(fullMethod string) bool {
+	return strings.HasPrefix(fullMethod, healthServicePrefix)
+}
 
 // newMetricsInterceptor builds the RED instruments and returns a unary server
 // interceptor that records them per RPC. The catalogue owns these metrics
@@ -47,6 +63,11 @@ func newMetricsInterceptor() (grpc.UnaryServerInterceptor, error) {
 	}
 
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		// Health probes are excluded from RED so the dataset's rate/error series
+		// reflect real product traffic only (parity with cart/bff/users).
+		if IsHealthMethod(info.FullMethod) {
+			return handler(ctx, req)
+		}
 		start := time.Now()
 		resp, err := handler(ctx, req)
 

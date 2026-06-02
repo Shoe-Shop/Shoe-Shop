@@ -45,6 +45,10 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      # Trim NodeSDK resource detectors to env-only so bff's resource matches the
+      # Go/Python services (service.name/namespace, deployment.environment,
+      # telemetry.sdk.*) — keeps host.*/process.* off Loki/Prometheus labels.
+      OTEL_NODE_RESOURCE_DETECTORS: env
       PORT: "8080"
       CATALOGUE_ADDR: "catalogue:9090"
       CART_ADDR: "cart:9090"
@@ -112,6 +116,10 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      # Trim NodeSDK resource detectors to env-only so cart's resource matches the
+      # Go/Python services (service.name/namespace, deployment.environment,
+      # telemetry.sdk.*) — keeps host.*/process.* off Loki/Prometheus labels.
+      OTEL_NODE_RESOURCE_DETECTORS: env
       CART_GRPC_ADDR: "0.0.0.0:9090"
       HEALTH_PORT: "8080"
       REDIS_URL: "redis://redis:6379"

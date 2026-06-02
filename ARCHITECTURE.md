@@ -12,7 +12,12 @@
 > services (Cart + BFF) carry the documented JS-stack exemplar caveat: metric↔trace
 > exemplars come from the bundle's Tempo metrics-generator, as OpenTelemetry-JS does
 > not emit them. BFF's RED is HTTP-server-side from instrumentation-http, not a
-> hand-rolled interceptor.)_
+> hand-rolled interceptor. **Consistency/hygiene polish since:** unified each
+> service's own scope to `shoeshop/<svc>` (events told apart by `eventName`, not
+> scope; stdlib-bridge logs keep their native scope — §9); pinned Cart/BFF to
+> `OTEL_NODE_RESOURCE_DETECTORS=env` for resource parity (no `host.*`/`process.*`
+> labels); excluded gRPC health probes from Catalogue's RED + traces — all
+> re-verified live.)_
 
 ---
 
@@ -156,6 +161,15 @@ services/users/               # Users (Python · FastAPI + gRPC)
   vs `task up:core` / `up:full` (everything containerized).
 - **Common:** `task up:core`, `task ps`, `task logs -- <svc>`, `task down`,
   `task nuke` (also deletes volumes), `task obs` (prints endpoints).
+- **Driving the gRPC services with `grpcurl`:** **catalogue** and **users**
+  register gRPC server reflection, so `grpcurl -plaintext <svc>:9090 list` works
+  with no proto. **cart** does not — pass the proto explicitly
+  (`grpcurl -plaintext -import-path proto -proto cart/v1/cart.proto …`). The BFF is
+  HTTP — drive it with `curl bff:8080/api/*`. Query the LGTM backends from a
+  container on the `shoeshop` network (`otel-lgtm:9090` Prometheus, `:3100` Loki,
+  `:3200` Tempo — none are host-published). **Use absolute time windows** in
+  Loki/Prometheus queries: the WSL2 host clock can jump, so `now()-N` windows can
+  silently miss recently-written data.
 
 Measured footprint: `core` profile idles around **~0.8 GB** total (otel-lgtm is
 ~90% of it); well within an 8 GB WSL2 budget.
@@ -237,6 +251,32 @@ The join keys (the same four every signal must share) are specified in
 consistent resource attributes (`service.namespace=shoeshop`, `service.name`,
 `deployment.environment=local` — already flowing from `OTEL_RESOURCE_ATTRIBUTES`
 in every Compose service).
+
+### Instrumentation scope & the event-vs-log rule (standard for all services)
+
+A service's **own** meter, logger and events use the instrumentation scope
+**`shoeshop/<svc>`** (e.g. `shoeshop/catalogue`, `shoeshop/users`,
+`shoeshop/cart`, `shoeshop/bff`). **Events are distinguished from logs by the OTel
+`eventName` field — the name lands in the Loki *body* — not by scope.** Do not
+encode "this is an event" in the scope name; the same `shoeshop/<svc>` scope
+carries both the structured logs and the domain events of a service.
+
+One documented exception: **bridged stdlib/runtime logs keep their native logger
+scope.** Python's stdlib-logging→OTel bridge (Users) scopes each record by the
+**Python logger name** (`users.service`, `users`, …), because that is how the
+bridge works; only the hand-emitted Users *events* carry `shoeshop/users`. This is
+fine — events are still told apart by `eventName`, and the resource attributes
+(`service.name` etc.) still join every record. The rule above governs each
+service's *own* instrumentation; it does not fight a language's logging bridge.
+
+**Resource parity across stacks.** Every signal must carry the same minimal
+resource: `service.name`, `service.namespace=shoeshop`, `deployment.environment=local`,
+`telemetry.sdk.*` — and *only* that, so the dataset's label set is uniform. Go and
+Python emit exactly this from `OTEL_RESOURCE_ATTRIBUTES`/`OTEL_SERVICE_NAME` + the
+SDK. Node's `NodeSDK` would otherwise auto-detect `host.*`/`process.*` (rotating,
+high-cardinality labels), so Cart and BFF pin **`OTEL_NODE_RESOURCE_DETECTORS=env`**
+in Compose to match — verified live (no `host_*`/`process_*` labels in Loki or
+Prometheus for cart/bff).
 
 ### Per-stack exemplar policy (the JS/TS exemplar gap — verified, durable)
 
@@ -354,18 +394,22 @@ versions are recorded below for the Go stack the other retrofits diverge from.
   built-in metrics are disabled (`otelgrpc.WithMeterProvider(noop)`) so the service
   owns the histogram and its **trace_id exemplars**. In Prometheus:
   `rpc_server_duration_seconds_{bucket,sum,count}` + `rpc_server_requests_total`,
-  the histogram buckets carrying exemplars with `trace_id`/`span_id`.
+  the histogram buckets carrying exemplars with `trace_id`/`span_id`. **gRPC
+  health-probe RPCs (`/grpc.health.v1.Health/*`) are excluded** from RED (and from
+  traces, via `otelgrpc.WithFilter`) so the rate/error series reflect real product
+  traffic only — parity with cart/bff/users (whose health surface is HTTP).
 - **Logs (L).** `slog` fans out (a small multi-handler) to stdout JSON *and* the
   OTel `otelslog` bridge (`contrib/bridges/otelslog` v0.19.0) → `sdk/log` v0.20.0
   → OTLP/gRPC → Loki. Handlers log with `slog.*Context`, so in-request records
   carry the active `trace_id`/`span_id` (Loki labels `service_name`,
-  `service_namespace`, `deployment_environment`; `trace_id`/`span_id` per record).
+  `service_namespace`, `deployment_environment`, `scope_name="shoeshop/catalogue"`;
+  `trace_id`/`span_id` per record).
 - **Events (E).** Domain/lifecycle events use the **Logs API** with `SetEventName`
   (`catalogue.product.viewed`, `catalogue.products.listed`,
   `catalogue.search.performed`), emitted with the request context so they also
   carry `trace_id`/`span_id`. The EventName lands in the log body; events are
-  identified by body + the `github.com/shoeshop/shoe-shop/services/catalogue`
-  scope + their domain attributes.
+  identified by that `eventName` body (not by scope — meter, logger and events all
+  share the service scope `shoeshop/catalogue`) plus their domain attributes.
 - **Traces (T).** Unchanged from the existing wiring above
   (`gRPC RPC → pool.acquire → Postgres query`, + Meili HTTP on search).
 - **Correlation proven (in the LGTM bundle).** A single `trace_id` joins **M → T → L**:
@@ -400,7 +444,11 @@ documented inline — this is the cross-stack maturity ADR-0002 expected to surf
 - **Logs (L).** The stdlib-logging bridge (`LoggingHandler` on the root logger,
   alongside the existing stdout JSON handler) exports to OTLP→Loki and **captures
   the active trace_id/span_id automatically**; handler-level `log.info(..., extra=…)`
-  becomes log attributes.
+  becomes log attributes. Per the §9 scope rule's documented exception, bridged logs
+  carry `scope_name` = the **Python logger name** (`users.service`, `users`), not
+  `shoeshop/users` — that is how the stdlib bridge scopes. Only the hand-emitted
+  events (below) use `shoeshop/users`; every record still joins on `service.name`
+  etc.
 - **Events (E).** The dedicated Events API is **deprecated since 1.39.0**; the
   forward path used here is a **log record with the `event_name` field set**
   (`opentelemetry.sdk._logs._internal.LogRecord`) emitted via the Logs API logger
@@ -423,11 +471,14 @@ documented inline — this is the cross-stack maturity ADR-0002 expected to surf
 
 The Node retrofit lives in [`services/cart/src/telemetry.ts`](services/cart/src/telemetry.ts),
 following the Catalogue reference: **one `NodeSDK`** wires tracer + meter + logger
-providers off NodeSDK's auto-detected resource, so every signal agrees on
+providers off NodeSDK's resource, so every signal agrees on
 `service.name`/`service.namespace`/`deployment.environment` (from the `OTEL_*`
-compose env). All SDK APIs were **verified in Docker** against the installed
-versions before use. Where Node diverges from Go/Python is documented inline — the
-exemplar gap is the cross-stack maturity ADR-0002 expected.
+compose env). The resource detectors are pinned to **`OTEL_NODE_RESOURCE_DETECTORS=env`**
+in Compose so the emitted resource matches the Go/Python services exactly (no
+`host.*`/`process.*` labels — see §9 "Resource parity"). All SDK APIs were
+**verified in Docker** against the installed versions before use. Where Node
+diverges from Go/Python is documented inline — the exemplar gap is the cross-stack
+maturity ADR-0002 expected.
 
 - **Metrics (M).** The gRPC auto-instrumentation emits **spans only** (no server
   metrics), so — like the Go/Python interceptor — a grpc-js **server interceptor**
@@ -458,16 +509,17 @@ exemplar gap is the cross-stack maturity ADR-0002 expected.
   `Record.SetEventName` (`cart.viewed`, `cart.item.added`, `cart.item.removed`,
   `cart.cleared`). Emitted inside the request span so they carry `trace_id`/
   `span_id`. As with Go/Python, the event name lands in the log **body** (Loki does
-  not promote `event_name` to a label); events are told apart from logs by
-  `scope_name="shoeshop/cart"` + body.
+  not promote `event_name` to a label); events are told apart from logs by their
+  `eventName` body — both logs and events share `scope_name="shoeshop/cart"`.
 - **Traces (T).** Unchanged (`gRPC RPC → redis command`).
 - **Correlation proven (in the LGTM bundle).** One `trace_id` joins **M → T → L/E**:
   an exemplar on `traces_spanmetrics_latency_bucket{service="cart",
   span_name="grpc.cart.v1.CartService/GetCart", status_code="STATUS_CODE_ERROR"}`
-  (trace_id `9a872000…`) resolves in Tempo (200) and selects that request's record
-  in Loki (`{service_name="cart"} | trace_id="9a872000…"` → the
-  `"rejected cart request"` warn log); an AddItem exemplar (`ecc0c4be…`) resolves
-  the same way to its `cart.item.added` **event**.
+  resolves in Tempo (`/api/traces/<id>` → 200) and selects that request's record
+  in Loki (`{service_name="cart"} | trace_id="<id>"` → the `"rejected cart request"`
+  warn log); an `AddItem` exemplar resolves the same way to its `cart.item.added`
+  **event**. *(Query shapes are authoritative; specific trace_ids are illustrative —
+  the LGTM bundle is ephemeral, so the IDs differ on every run.)*
 
 > **Verified Node OTel set** (all already present transitively — declared as direct
 > deps): `@opentelemetry/sdk-node` `0.218.0` · `sdk-metrics` `2.7.1` ·
@@ -480,7 +532,8 @@ exemplar gap is the cross-stack maturity ADR-0002 expected.
 
 The TS retrofit lives in [`services/bff/src/telemetry.ts`](services/bff/src/telemetry.ts),
 following the Cart (Node) retrofit — **same OTel-JS family**, so it reuses Cart's
-**one `NodeSDK`** wiring (tracer + meter + logger off the auto-detected resource) and
+**one `NodeSDK`** wiring (tracer + meter + logger off its resource, detectors pinned
+to `OTEL_NODE_RESOURCE_DETECTORS=env` for parity — see §9 "Resource parity") and
 its `log` / `event` fan-out helpers verbatim. APIs were **verified in Docker** before
 use. BFF is the **last** real traces-only service; finishing it makes **4 of 4 real
 services MELT-complete**. Where BFF diverges from Cart is the **RED surface**: BFF is
@@ -514,18 +567,21 @@ gRPC server — so RED is **HTTP-server-side**, not gRPC.
 - **Events (E).** Logs API with the `eventName` field set, emitted inside the request
   span — modest, read-path domain events: `bff.products.listed`, `bff.product.viewed`,
   `bff.search.performed`, `bff.cart.viewed`. The name lands in the Loki **body**;
-  events are told apart from logs by `scope_name="shoeshop/bff"` + body. Richer domain
-  events arrive with the v0.3 NATS write path.
+  events are told apart from logs by their `eventName` body — both logs and events
+  share `scope_name="shoeshop/bff"`. Richer domain events arrive with the v0.3 NATS
+  write path.
 - **Traces (T).** Unchanged (`bff → catalogue` and `bff → cart → redis`).
-- **Correlation proven (in the LGTM bundle, 2026-06-02).** One `trace_id` joins
+- **Correlation proven (in the LGTM bundle).** One `trace_id` joins
   **M → T → L/E**: a `traces_spanmetrics_latency_bucket{service="bff",
   span_name="grpc.catalogue.v1.CatalogueService/GetProduct",
-  status_code="STATUS_CODE_ERROR"}` exemplar (trace_id `d84b3898…`) resolves in Tempo
-  (200) and selects that request's `"downstream gRPC error"` warn log in Loki
+  status_code="STATUS_CODE_ERROR"}` exemplar resolves in Tempo (`/api/traces/<id>`
+  → 200) and selects that request's `"downstream gRPC error"` warn log in Loki
   (`http_route="/api/products/:id"`, `rpc_grpc_status_code="NOT_FOUND"`,
-  `http_response_status_code="404"`); a SearchProducts exemplar (`2d092957…`) resolves
-  the same way to its `bff.search.performed` **event** (`search.query="run"`). App RED
-  errors are visible (`http_server_request_duration_seconds_count{…status_code="404"}`).
+  `http_response_status_code="404"`); a `SearchProducts` exemplar resolves the same
+  way to its `bff.search.performed` **event** (`search.query=…`). App RED errors are
+  visible (`http_server_request_duration_seconds_count{…status_code="404"}`).
+  *(Query shapes are authoritative; specific trace_ids are illustrative — the LGTM
+  bundle is ephemeral, so the IDs differ on every run.)*
 
 > **Verified TS OTel set** (same as Cart — all present transitively, declared as
 > direct deps): `@opentelemetry/sdk-node` `0.218.0` · `auto-instrumentations-node`

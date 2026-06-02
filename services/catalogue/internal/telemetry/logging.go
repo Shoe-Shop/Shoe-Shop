@@ -17,10 +17,12 @@ import (
 //     span_id — the trace ↔ log join key from the correlation contract.
 //
 // Use the *Context logging methods (slog.InfoContext, …) inside request handlers
-// so the trace context propagates to the bridge.
-func newLogger(lp *sdklog.LoggerProvider, serviceName string) *slog.Logger {
+// so the trace context propagates to the bridge. The bridge is scoped
+// `shoeshop/catalogue` (scopeName) so the catalogue's own logs share the service
+// scope with its meter and events (ARCHITECTURE.md §9 convention).
+func newLogger(lp *sdklog.LoggerProvider) *slog.Logger {
 	stdout := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
-	bridge := otelslog.NewHandler(serviceName, otelslog.WithLoggerProvider(lp))
+	bridge := otelslog.NewHandler(scopeName, otelslog.WithLoggerProvider(lp))
 	return slog.New(fanoutHandler{handlers: []slog.Handler{stdout, bridge}})
 }
 

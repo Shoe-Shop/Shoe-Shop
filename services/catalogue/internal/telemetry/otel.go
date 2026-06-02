@@ -104,7 +104,7 @@ func Setup(ctx context.Context, serviceName string) (*Telemetry, error) {
 	}
 
 	return &Telemetry{
-		Logger:           newLogger(lp, serviceName),
+		Logger:           newLogger(lp),
 		UnaryInterceptor: interceptor,
 		Shutdown:         shutdown,
 	}, nil
