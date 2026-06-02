@@ -9,7 +9,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-7c3aed)](https://opentelemetry.io/)
 [![CNCF Stack](https://img.shields.io/badge/Stack-CNCF-1e40af)](https://www.cncf.io/)
-[![Status: Blueprint](https://img.shields.io/badge/Status-Blueprint-orange)]()
+[![Status: v0.2 · MELT-complete](https://img.shields.io/badge/Status-v0.2_·_MELT--complete-brightgreen)]()
 
 </div>
 
@@ -153,7 +153,7 @@ Polyglot is deliberate: it forces the observability layer to prove cross-languag
 | 1 | **Frontend** | TypeScript · Next.js 15 (App Router) | Node.js 22 / Edge | — | React Server Components and streaming SSR are the modern default; deep ecosystem; renders fast on cold caches. |
 | 2 | **BFF** | TypeScript · Hono | Node.js 22 / Bun-compatible | — | Tiny, Web-Standard `fetch` API, edge-portable, excellent OTel support. Acts as trace root + auth boundary. |
 | 3 | **Catalogue** | Go · gRPC + `sqlc` | Go 1.25 | PostgreSQL + Meilisearch | Read-heavy, low-latency. Go's GC pauses are negligible at this scale; `sqlc` keeps queries typesafe. |
-| 4 | **Cart** | TypeScript · Fastify | Node.js 22 | Redis (primary store) | Session-affine, mutation-heavy, short-lived data. Redis is the right shape; Fastify is fast and OTel-native. |
+| 4 | **Cart** | Node.js · gRPC | Node.js 22 | Redis (primary store) | Session-affine, mutation-heavy, short-lived data. Redis is the right shape; a lean gRPC server (no web framework) keeps the surface small and OTel-native. |
 | 5 | **Orders** | Java 21 · Spring Boot 3.3 (virtual threads) | JVM 21 | PostgreSQL | Classic enterprise workload — transactions, sagas, audit. Virtual threads remove the thread-per-request cost without rewriting the model. Also showcases JVM-side observability. |
 | 6 | **Payment** | Rust · Axum + `sqlx` | Native | PostgreSQL | Security- and correctness-critical mock. Rust forces explicit error paths and gives us a `no_std`-adjacent footprint to demo low-resource scenarios. |
 | 7 | **Users / Auth** | Python · FastAPI | Python 3.12 | PostgreSQL + **Zitadel** (OIDC) | FastAPI is the most idiomatic async Python web stack; auth is delegated to **Zitadel** — a Go-based OIDC provider (~200 MB) chosen over Keycloak's ~500 MB JVM for the local RAM budget — so we demo real SSO traces without the footprint. Pluggable behind standard OIDC; Keycloak remains a documented swap. |
@@ -338,7 +338,7 @@ shoe-shop/
 │   ├── frontend/                        # Next.js 15 + TS
 │   ├── bff/                             # Hono BFF (TS)
 │   ├── catalogue/                       # Go
-│   ├── cart/                            # Node.js + Fastify
+│   ├── cart/                            # Node.js · gRPC
 │   ├── orders/                          # Java 21 + Spring Boot 3.3
 │   ├── payment/                         # Rust + Axum
 │   ├── users/                           # Python + FastAPI
@@ -418,7 +418,7 @@ One command interface, two runtimes:
 
 | Profile | Services | Target |
 |---------|----------|--------|
-| `core` *(default)* | 6 — frontend, bff, catalogue, cart, orders, payment | Daily dev; full checkout trace at minimum RAM |
+| `core` *(default)* | 7 — frontend, bff, catalogue, cart, users, orders, payment | Daily dev; the four real MELT-complete services (catalogue, cart, bff, users) validate together here |
 | `full` | all 11 + Zitadel auth | Demos, integration, chaos |
 | `lean-jvm` | full, Orders/Shipping heaps capped | Tightest budget |
 
@@ -443,19 +443,30 @@ A root `Taskfile.yml` exposes the same verbs across tiers: `task up`, `task seed
 
 ## 🗺 Roadmap
 
-> Status: **Blueprint phase.** This README is the contract; code follows.
+> **The living roadmap is [`ARCHITECTURE.md` §11](ARCHITECTURE.md)** — it stays
+> authoritative on current status (what's real vs. stub) if it and this list ever
+> disagree. The arc below is the high-level public view.
+>
+> **Observability is not a milestone — it's the standard.** Every service ships
+> **MELT-complete** (Metrics, Events, Logs, Traces, *verified correlated*) from
+> v0.2 onward — not "traces now, telemetry later." See
+> [ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md) and
+> [ARCHITECTURE.md §9](ARCHITECTURE.md). The labeled incident corpus this produces
+> is the project's real product: its schema is **designed now** (`docs/dataset/`)
+> and built incrementally, not deferred to the end.
 
-- [ ] **v0.1 — Foundations**: monorepo scaffold, **Dual-Path `Taskfile.yml`**, **Compose profiles** (`core`/`full`/`lean-jvm`) with per-container mem limits, `proto/` + Buf, CI skeleton, OTel libs per language
-- [ ] **v0.2 — Read path**: Frontend + BFF + Catalogue + Users, end-to-end trace in Grafana
-- [ ] **v0.3 — Write path**: Cart + Orders + Payment + Inventory, sagas working
-- [ ] **v0.4 — Async**: NATS JetStream, Notification + Shipping event flows
-- [ ] **v0.5 — Observability**: full LGTM+P stack, baseline dashboards, SLOs, Beyla
-- [ ] **v0.6 — Chaos**: Chaos Mesh + Toxiproxy + first 6 incident scenarios
+- [x] **v0.1 — Foundations**: monorepo scaffold, **Dual-Path `Taskfile.yml`**, **Compose profiles** (`core`/`full`/`lean-jvm`) with per-container mem limits, `proto/` + Buf. *(CI workflows and shared per-language OTel libs are still to come.)*
+- [x] **v0.2 — Read path + MELT**: Catalogue (Go), BFF (TS), Cart (Node/Redis), Users (Python) built **and all four retrofitted MELT-complete** — four correlated signals in Grafana. *(Frontend moved to "Next"; the full checkout trace lands with the write path.)*
+- [ ] **Next — Frontend**: Next.js 15 read-path storefront (browse / search / cart) against the BFF, born MELT-complete; plus **BFF → Users** account endpoints.
+- [ ] **v0.3 — Write path**: Orders + Payment + Inventory + checkout, **NATS JetStream** events (where domain **Events** get rich), sagas working
+- [ ] **v0.4 — Async**: Notification + Shipping event flows over NATS
+- [ ] **v0.5 — Observability depth**: dashboards-as-code, SLOs, Beyla eBPF safety net, opt-in Pyroscope profiles
+- [ ] **v0.6 — Chaos & incidents**: Toxiproxy + feature-flag faults + the incident-simulator; first labeled, reproducible scenarios
 - [ ] **v0.7 — Recommendation**: ML service, GPU-optional, tail-latency dashboards
 - [ ] **v0.8 — Mesh overlay**: Istio Ambient opt-in
 - [ ] **v0.9 — Polish**: Lighthouse ≥ 95, k6 personas, docs site
 - [ ] **v1.0 — GA**: Helm chart on Artifact Hub, blog post, conference demo
-- [ ] **v1.x — Incident dataset**: labeled `(telemetry, root_cause)` exports for offline study and automation
+- [ ] **v1.x — Incident dataset**: labeled `(telemetry, root_cause)` exports for offline study and the AI-SRE "project 2"
 
 ---
 
