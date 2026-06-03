@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+/*
+ * NEXUS design system.
+ *
+ * One engine, four skins. Every surface is painted from semantic CSS variables
+ * (--bg, --accent, --font-display …). A skin = one block that re-binds those
+ * variables; switching `data-skin` on <html> reskins the entire site with no
+ * component changes. Tailwind utilities (bg-bg, text-fg, bg-accent, font-display)
+ * resolve through the @theme map below, so they react to the active skin too.
+ */
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-fg: var(--accent-fg);
+
+  --font-display: var(--font-display-stack);
+  --font-sans: var(--font-sans-stack);
+
+  --radius-card: var(--radius);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── Kinetic sport-tech (default) ─────────────────────────────────────
+   Near-black stage, volt accent, condensed display caps. Energetic. */
+:root,
+[data-skin="kinetic"] {
+  --bg: #0a0a0b;
+  --surface: #141417;
+  --fg: #fafafa;
+  --muted: #8a8a93;
+  --border: #26262b;
+  --accent: #d7ff3e;
+  --accent-2: #4d7cff;
+  --accent-fg: #0a0a0b;
+
+  --font-display-stack: var(--font-oswald), "Arial Narrow", sans-serif;
+  --font-sans-stack: var(--font-inter), system-ui, sans-serif;
+
+  --radius: 2px;
+  --shadow-card: 0 20px 50px -20px rgb(0 0 0 / 0.7);
+  --display-tracking: 0.02em;
+  --display-transform: uppercase;
+}
+
+/* ── Cyberpunk neon-noir ─────────────────────────────────────────────
+   Violet-black void, twin neons (magenta + cyan), glow, monospace HUD. */
+[data-skin="cyber"] {
+  --bg: #07030f;
+  --surface: #120a22;
+  --fg: #ece6ff;
+  --muted: #8b7fb0;
+  --border: #2a1a4a;
+  --accent: #ff2e97;
+  --accent-2: #16f2e3;
+  --accent-fg: #07030f;
+
+  --font-display-stack: var(--font-mono), ui-monospace, monospace;
+  --font-sans-stack: var(--font-inter), system-ui, sans-serif;
+
+  --radius: 0px;
+  --shadow-card: 0 0 0 1px var(--border), 0 0 40px -8px rgb(255 46 151 / 0.45);
+  --display-tracking: 0.12em;
+  --display-transform: uppercase;
+}
+
+/* ── Editorial minimal ───────────────────────────────────────────────
+   Warm paper, ink, a single clay accent, a serif display. Calm + premium. */
+[data-skin="editorial"] {
+  --bg: #f4f1ea;
+  --surface: #ffffff;
+  --fg: #1a1714;
+  --muted: #6b6357;
+  --border: #ded7c9;
+  --accent: #b4452c;
+  --accent-2: #1a1714;
+  --accent-fg: #ffffff;
+
+  --font-display-stack: var(--font-fraunces), Georgia, serif;
+  --font-sans-stack: var(--font-inter), system-ui, sans-serif;
+
+  --radius: 6px;
+  --shadow-card: 0 24px 48px -28px rgb(26 23 20 / 0.28);
+  --display-tracking: -0.01em;
+  --display-transform: none;
+}
+
+/* ── Brutalist-luxe ──────────────────────────────────────────────────
+   Paper-white, hard black rules, one hot accent, oversized caps, solid shadow. */
+[data-skin="brutalist"] {
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --fg: #0a0a0a;
+  --muted: #565656;
+  --border: #0a0a0a;
+  --accent: #ff4d00;
+  --accent-2: #1500ff;
+  --accent-fg: #ffffff;
+
+  --font-display-stack: var(--font-oswald), "Arial Narrow", sans-serif;
+  --font-sans-stack: var(--font-inter), system-ui, sans-serif;
+
+  --radius: 0px;
+  --shadow-card: 6px 6px 0 0 var(--fg);
+  --display-tracking: -0.01em;
+  --display-transform: uppercase;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    background: var(--bg);
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+  [data-skin="editorial"],
+  [data-skin="brutalist"] {
+    color-scheme: light;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition:
+      background-color 0.5s var(--ease-out-expo),
+      color 0.5s var(--ease-out-expo);
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+  /* Condensed display type, skin-tuned. */
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: var(--display-tracking);
+    text-transform: var(--display-transform);
+  }
+}
+
+@layer utilities {
+  /* Accent gradient used by heroes / focal type. */
+  .text-gradient {
+    background: linear-gradient(110deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Subtle dotted stage grid (kinetic/cyber). */
+  .bg-grid {
+    background-image: radial-gradient(
+      var(--border) 1px,
+      transparent 1px
+    );
+    background-size: 28px 28px;
+  }
+}
