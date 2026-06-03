@@ -6,18 +6,19 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-02 (BFF MELT-complete — **all 4 real services are now
-> four-signal MELT-complete**, verified correlated in the LGTM bundle; Go reference
-> + Python, Node and TS retrofits landed, §9. The retrofit phase is done. Both JS/TS
-> services (Cart + BFF) carry the documented JS-stack exemplar caveat: metric↔trace
-> exemplars come from the bundle's Tempo metrics-generator, as OpenTelemetry-JS does
-> not emit them. BFF's RED is HTTP-server-side from instrumentation-http, not a
-> hand-rolled interceptor. **Consistency/hygiene polish since:** unified each
-> service's own scope to `shoeshop/<svc>` (events told apart by `eventName`, not
-> scope; stdlib-bridge logs keep their native scope — §9); pinned Cart/BFF to
-> `OTEL_NODE_RESOURCE_DETECTORS=env` for resource parity (no `host.*`/`process.*`
-> labels); excluded gRPC health probes from Catalogue's RED + traces — all
-> re-verified live.)_
+> _Last updated: 2026-06-04 (NEXUS frontend read path shipped — Next.js 15 App
+> Router storefront with live BFF calls is now real; §2 / §4 / §11 updated.
+> Previously: BFF MELT-complete — **all 4 real services are four-signal
+> MELT-complete**, verified correlated in the LGTM bundle; Go reference + Python,
+> Node and TS retrofits landed, §9. The retrofit phase is done. Both JS/TS services
+> (Cart + BFF) carry the documented JS-stack exemplar caveat: metric↔trace exemplars
+> come from the bundle's Tempo metrics-generator, as OpenTelemetry-JS does not emit
+> them. BFF's RED is HTTP-server-side from instrumentation-http, not a hand-rolled
+> interceptor. **Consistency/hygiene polish:** unified each service's own scope to
+> `shoeshop/<svc>` (events told apart by `eventName`, not scope; stdlib-bridge logs
+> keep their native scope — §9); pinned Cart/BFF to `OTEL_NODE_RESOURCE_DETECTORS=env`
+> for resource parity (no `host.*`/`process.*` labels); excluded gRPC health probes
+> from Catalogue's RED + traces — all re-verified live.)_
 
 ---
 
@@ -65,15 +66,18 @@ This is the most important section — do not assume more is built than is liste
 | **BFF** (Hono/TS, gRPC client → Catalogue + Cart, OTel auto-instr) | ✅ **Done & validated** (v0.2) — cross-service traces `bff → catalogue` and `bff → cart → redis` |
 | **Cart** (Node/TS, gRPC, Redis, OTel auto-instr) | ✅ **Done & validated** (v0.2) — gRPC → Redis (ioredis) spans in Tempo |
 | **Users** (Python 3.12, FastAPI + gRPC, Postgres, OTel) | ✅ **Done & validated** (v0.2) — multi-span `gRPC RPC → Postgres query` traces in Tempo |
-| frontend, orders, payment | 🟡 **Stubs** (`traefik/whoami`) — real ports/limits/deps, no logic |
+| **Frontend** (Next.js 15 App Router, NEXUS storefront) | ✅ **Done** (read path) — home · shop (search + filter + sort) · PDP · cart · account; live BFF calls; MELT instrumentation **not yet wired** |
+| orders, payment | 🟡 **Stubs** (`traefik/whoami`) — real ports/limits/deps, no logic |
 | shipping, inventory, recommendation, notification | 🟡 **Stubs** (full profile) |
 | Zitadel auth | 🟡 Wired in `full` profile, not yet integrated |
 | Incident / chaos framework | 🔴 **Planned** (see §11) |
 | k3d / Helm / Argo CD / Istio paths | 🔴 **Planned / documented only** |
 
-**Rule of thumb:** only Catalogue, the BFF, Cart, Users, + the 5 infra
-containers contain real behaviour today. Everything else is a runnable
-placeholder. All four real services now live in the **`core` profile**, so a
+**Rule of thumb:** Catalogue, the BFF, Cart, Users, + the 5 infra containers
+contain real backend behaviour. The **Frontend** (NEXUS, Next.js 15) is now also
+real — it calls the BFF live for catalogue, search and cart. Orders, payment,
+shipping, inventory, recommendation and notification remain `traefik/whoami`
+placeholders. All four backend services now live in the **`core` profile**, so a
 plain `task up:core` brings up the full MELT-complete set together (Users moved
 `full → core` in step 5; it depends only on the always-on Postgres + otel-lgtm).
 
@@ -112,7 +116,7 @@ OTel Collector) on port 3000 / OTLP 4317-4318. Pyroscope is an opt-in sidecar.
 
 | # | Service | Lang / Stack | Sync | Store | Status |
 |---|---------|--------------|------|-------|--------|
-| 1 | frontend | TypeScript · Next.js 15 | — | — | stub |
+| 1 | **frontend** | **TypeScript · Next.js 15 App Router** | — | — | **real** (read path — MELT TBD) |
 | 2 | **bff** | TypeScript · Hono | gRPC client | — | **real** |
 | 3 | **catalogue** | **Go 1.25 · gRPC + sqlc** | gRPC | Postgres + Meilisearch | **real** |
 | 4 | **cart** | Node.js · gRPC | gRPC | Redis | **real** |
@@ -619,11 +623,15 @@ unlabeled, unrecoverable telemetry.
 
 ## 11. Roadmap / next steps
 
-- **v0.2 (done — read path):** ✅ Catalogue, ✅ BFF, ✅ Cart (Redis),
-  ✅ **BFF → Cart wired** (`bff → cart → redis` trace validated; BFF exposes
-  `/api/cart/:userId` GET/POST-items/DELETE-item/DELETE), ✅ **Users** (Python ·
-  FastAPI + gRPC · Postgres; `gRPC RPC → Postgres query` traces validated). All
-  **traces-only** (see §9 / the §2 telemetry note).
+- **v0.2 (done — read path + NEXUS frontend):** ✅ Catalogue, ✅ BFF, ✅ Cart
+  (Redis), ✅ **BFF → Cart wired** (`bff → cart → redis` trace validated; BFF
+  exposes `/api/cart/:userId` GET/POST-items/DELETE-item/DELETE), ✅ **Users**
+  (Python · FastAPI + gRPC · Postgres; `gRPC RPC → Postgres query` traces
+  validated), ✅ **Frontend** (Next.js 15 App Router — NEXUS storefront; home ·
+  shop with search/filter/sort · PDP · cart · account; live BFF calls). All
+  backend services **traces-only** initially (see §9 / the §2 telemetry note);
+  MELT retrofit completed separately (v0.2-MELT below). Frontend MELT
+  instrumentation is the next frontend task.
 - **v0.2-MELT (retrofit done — the direction correction, ADR-0002):** make the four
   real services **MELT-complete** before any new feature. Sequence:
   1. ✅ docs-first persist — ADR-0002, §9 standard + Definition of Done +
@@ -644,7 +652,9 @@ unlabeled, unrecoverable telemetry.
      exemplar in Prometheus; correlated in-request log + domain event in Loki),
      `core` idles ~0.92 GB.
 - **Then resume features (each born MELT-complete):** wire **BFF → Users**
-  (account endpoints), a real **Frontend** consuming the BFF.
+  (account endpoints so the frontend account page goes live); add **OTel
+  instrumentation to the Frontend** (Web Vitals → OTLP, RSC server spans,
+  `trace_id` in client logs — Frontend MELT-complete).
 - **v0.3+:** orders/payment/checkout **write path** with NATS events — where
   domain **Events** get rich.
 - **Chaos / incident framework:** `tools/incident-simulator/` orchestrating

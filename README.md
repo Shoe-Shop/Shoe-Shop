@@ -9,7 +9,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-7c3aed)](https://opentelemetry.io/)
 [![CNCF Stack](https://img.shields.io/badge/Stack-CNCF-1e40af)](https://www.cncf.io/)
-[![Status: v0.2 · MELT-complete](https://img.shields.io/badge/Status-v0.2_·_MELT--complete-brightgreen)]()
+[![Status: v0.2 · MELT-complete + Frontend](https://img.shields.io/badge/Status-v0.2_·_MELT--complete_+_Frontend-brightgreen)]()
 
 </div>
 
@@ -456,8 +456,8 @@ A root `Taskfile.yml` exposes the same verbs across tiers: `task up`, `task seed
 > and built incrementally, not deferred to the end.
 
 - [x] **v0.1 — Foundations**: monorepo scaffold, **Dual-Path `Taskfile.yml`**, **Compose profiles** (`core`/`full`/`lean-jvm`) with per-container mem limits, `proto/` + Buf. *(CI workflows and shared per-language OTel libs are still to come.)*
-- [x] **v0.2 — Read path + MELT**: Catalogue (Go), BFF (TS), Cart (Node/Redis), Users (Python) built **and all four retrofitted MELT-complete** — four correlated signals in Grafana. *(Frontend moved to "Next"; the full checkout trace lands with the write path.)*
-- [ ] **Next — Frontend**: Next.js 15 read-path storefront (browse / search / cart) against the BFF, born MELT-complete; plus **BFF → Users** account endpoints.
+- [x] **v0.2 — Read path + MELT**: Catalogue (Go), BFF (TS), Cart (Node/Redis), Users (Python) built **and all four retrofitted MELT-complete** — four correlated signals in Grafana. **Frontend (NEXUS)** — Next.js 15 App Router storefront (home · shop · PDP · cart · account) against the live BFF — **also shipped**.
+- [ ] **Next — Frontend MELT + account endpoints**: instrument the Frontend (Web Vitals → OTLP, RSC server spans); wire **BFF → Users** so the account page goes live.
 - [ ] **v0.3 — Write path**: Orders + Payment + Inventory + checkout, **NATS JetStream** events (where domain **Events** get rich), sagas working
 - [ ] **v0.4 — Async**: Notification + Shipping event flows over NATS
 - [ ] **v0.5 — Observability depth**: dashboards-as-code, SLOs, Beyla eBPF safety net, opt-in Pyroscope profiles
