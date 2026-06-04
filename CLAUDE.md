@@ -13,16 +13,19 @@ future AI SRE ("project 2"). The storefront is the vehicle, not the goal; see
 services are real today (**Frontend** Next.js 15, **Catalogue** Go, **BFF** TS,
 **Cart** Node, **Users** Python) + the 5 infra containers; the rest are
 `traefik/whoami` stubs.
-**All 5 real services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
-BFF TS, **Frontend** Next.js 15 — four signals verified correlated) — **5 of 11
-MELT-complete; the retrofit phase is done.** The **Frontend** (NEXUS — Next.js 15
-App Router) is MELT-complete and verified correlated live in Grafana (RED + Web
-Vitals histograms, trace_id-stamped logs/events, `frontend → bff → catalogue`
-traces, spanmetrics exemplars). See ARCHITECTURE.md §2 / §9. Note: all three
-JS/TS services (Cart, BFF **and the Frontend**) get their metric↔trace **exemplars
-from the bundle's Tempo metrics-generator**, because OpenTelemetry-JS does not emit
-metric exemplars (verified; documented in §9). BFF's and the Frontend's RED are
-HTTP-server-side from `instrumentation-http` (not a hand-rolled interceptor).
+**6 real services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
+BFF TS, **Frontend** Next.js 15, **Inventory** Go — four signals verified
+correlated) — **6 of 11 MELT-complete.** The v0.2-MELT retrofit phase is done and
+the **v0.3 NATS JetStream write path has begun: Inventory (Go) is the first
+write-path service** (ADR-0003) — sync gRPC stock read (GetStock/BatchGetStock) +
+the inventory side of the checkout saga over NATS JetStream (reserve/release →
+reserved/rejected). It established the new cross-cutting **NATS+OTel
+trace-propagation pattern** (W3C `traceparent` rides NATS message headers, so an
+async saga step is ONE correlated trace), verified live. The two Go services
+(Catalogue, Inventory) emit metric **exemplars natively**; the three JS/TS services
+(Cart, BFF, Frontend) get their metric↔trace **exemplars from the bundle's Tempo
+metrics-generator**, because OpenTelemetry-JS does not emit them (verified; §9).
+See ARCHITECTURE.md §2 / §9 + ADR-0003.
 
 ## Hard rules
 - **No hallucination.** Verify against the code/registry before claiming things.
@@ -82,6 +85,17 @@ renders real profile). Verified end-to-end as one trace: `frontend → bff → u
 postgres` (asyncpg SELECT spans). Auth (Zitadel) still deferred — single demo
 identity until then.
 
-**Next (immediate):**
-- **v0.3 NATS write path** (Orders, Payment, Inventory, checkout saga, rich Events).
-- Incident/chaos framework comes after enough real, MELT-complete services exist to break.
+**v0.3 write path (in progress — ADR-0003):** orchestrated checkout saga over NATS
+JetStream (sync edge `frontend → bff → Orders.CreateOrder`, then async fulfilment).
+Streams `ORDERS`/`INVENTORY`/`PAYMENT`; JSON event envelope; `traceparent` in NATS
+headers. Build order, each born MELT-complete:
+- ✅ **Inventory (Go)** — done, MELT-complete, verified correlated; established the
+  NATS+OTel propagation spine. Runs in `full` (checkout-set profile placement TBD);
+  bring up explicitly: `docker compose --env-file deploy/compose/.env -f
+  deploy/compose/compose.yaml -f deploy/compose/compose.core.yaml -f
+  deploy/compose/compose.full.yaml up -d nats postgres otel-lgtm inventory`.
+- ⬜ **Orders (Java/Spring)** — next: the saga orchestrator + state machine.
+- ⬜ **Payment (Rust/Axum)** — deterministic simulator; Rust OTel verified last.
+- ⬜ **Notification (Go)** — pure subscriber on terminal order events.
+
+**Then:** incident/chaos framework — after enough real, MELT-complete services exist to break.
