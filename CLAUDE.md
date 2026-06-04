@@ -75,7 +75,13 @@ RED via `instrumentation-http`, Web Vitals histograms via `next/web-vitals` →
 `/api/vitals`, trace_id-stamped logs/events from RSC handlers, cross-service
 `frontend → bff → catalogue` traces, spanmetrics exemplars (JS exemplar gap, §9).
 
+**Account page (done):** **BFF → Users** wired — BFF fronts Users over gRPC
+(`GET /api/users/by-email/:email`, `GET /api/users/:id`); the Frontend account page
+is **live** (server component resolves the seeded demo shopper `ada@shoeshop.test`,
+renders real profile). Verified end-to-end as one trace: `frontend → bff → users →
+postgres` (asyncpg SELECT spans). Auth (Zitadel) still deferred — single demo
+identity until then.
+
 **Next (immediate):**
-- Wire **BFF → Users** account endpoints so the account page goes live.
-- Then **v0.3 NATS write path** (Orders, Payment, Inventory, checkout saga, rich Events).
+- **v0.3 NATS write path** (Orders, Payment, Inventory, checkout saga, rich Events).
 - Incident/chaos framework comes after enough real, MELT-complete services exist to break.

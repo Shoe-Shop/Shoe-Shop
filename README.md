@@ -457,7 +457,7 @@ A root `Taskfile.yml` exposes the same verbs across tiers: `task up`, `task seed
 
 - [x] **v0.1 — Foundations**: monorepo scaffold, **Dual-Path `Taskfile.yml`**, **Compose profiles** (`core`/`full`/`lean-jvm`) with per-container mem limits, `proto/` + Buf. *(CI workflows and shared per-language OTel libs are still to come.)*
 - [x] **v0.2 — Read path + MELT**: Catalogue (Go), BFF (TS), Cart (Node/Redis), Users (Python) built **and all four retrofitted MELT-complete** — four correlated signals in Grafana. **Frontend (NEXUS)** — Next.js 15 App Router storefront (home · shop · PDP · cart · account) against the live BFF — shipped **and MELT-complete** (RED + Web Vitals, trace_id-stamped logs/events, `frontend → bff → catalogue` traces, verified correlated). **5 of 11 services MELT-complete.**
-- [ ] **Next — account endpoints**: wire **BFF → Users** so the account page goes live.
+- [x] **Account path**: **BFF → Users** wired (gRPC, by-email/by-id); the Frontend account page is **live** — one `frontend → bff → users → postgres` trace. Auth (Zitadel) still deferred; single demo identity until then.
 - [ ] **v0.3 — Write path**: Orders + Payment + Inventory + checkout, **NATS JetStream** events (where domain **Events** get rich), sagas working
 - [ ] **v0.4 — Async**: Notification + Shipping event flows over NATS
 - [ ] **v0.5 — Observability depth**: dashboards-as-code, SLOs, Beyla eBPF safety net, opt-in Pyroscope profiles

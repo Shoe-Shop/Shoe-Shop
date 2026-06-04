@@ -130,8 +130,8 @@ OTel Collector) on port 3000 / OTLP 4317-4318. Pyroscope is an opt-in sidecar.
 
 | # | Service | Lang / Stack | Sync | Store | Status |
 |---|---------|--------------|------|-------|--------|
-| 1 | **frontend** | **TypeScript · Next.js 15 App Router** | — | — | **real** (read path — MELT TBD) |
-| 2 | **bff** | TypeScript · Hono | gRPC client | — | **real** |
+| 1 | **frontend** | **TypeScript · Next.js 15 App Router** | — | — | **real** (MELT-complete) |
+| 2 | **bff** | TypeScript · Hono | gRPC client → catalogue · cart · users | — | **real** (MELT-complete) |
 | 3 | **catalogue** | **Go 1.25 · gRPC + sqlc** | gRPC | Postgres + Meilisearch | **real** |
 | 4 | **cart** | Node.js · gRPC | gRPC | Redis | **real** |
 | 5 | orders | Java 21 · Spring Boot | gRPC | Postgres + NATS | stub |
