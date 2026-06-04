@@ -16,3 +16,9 @@ export function bffBaseUrl(): string {
 // Placeholder identity for the (not-yet-wired) Users/auth service. The cart is
 // keyed by user id; until auth lands we operate as a single demo shopper.
 export const DEMO_USER_ID = "u-demo";
+
+// Until auth lands, the account page resolves a single seeded demo shopper by
+// email (services/users/app/seed.sql). This is the "signed-in" identity the
+// account page renders; real sign-in arrives with Zitadel.
+export const DEMO_ACCOUNT_EMAIL =
+  process.env.NEXT_PUBLIC_DEMO_ACCOUNT_EMAIL ?? "ada@shoeshop.test";

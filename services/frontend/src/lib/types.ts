@@ -21,6 +21,15 @@ export interface Cart {
   items: CartItem[];
 }
 
+// A registered shopper account, mirroring users.v1.User via the BFF.
+export interface User {
+  id: string;
+  email: string;
+  fullName: string;
+  // RFC 3339 / ISO 8601 timestamp of when the account was created.
+  createdAt: string;
+}
+
 // BFF response envelopes.
 export interface ProductsResponse {
   products: Product[];
@@ -30,4 +39,7 @@ export interface ProductResponse {
 }
 export interface CartResponse {
   cart: Cart;
+}
+export interface UserResponse {
+  user: User;
 }

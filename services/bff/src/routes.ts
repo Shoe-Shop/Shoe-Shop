@@ -3,6 +3,7 @@
 import { Hono, type Context } from 'hono';
 import { catalogue, grpc } from './catalogue-client';
 import { cart } from './cart-client';
+import { users } from './users-client';
 import { log, event } from './telemetry';
 
 export const app = new Hono();
@@ -100,6 +101,33 @@ app.delete('/api/cart/:userId/items/:productId', async (c) => {
 app.delete('/api/cart/:userId', async (c) => {
   try {
     const res = await cart.clearCart({ userId: c.req.param('userId') });
+    return c.json(res);
+  } catch (e) {
+    return grpcError(c, e);
+  }
+});
+
+// ── Users / account ──────────────────────────────────────────────────
+// Account profile fronting the Users gRPC service (Postgres-backed). Each
+// call becomes a bff -> users -> postgres span chain in Tempo. The frontend
+// account page resolves the signed-in shopper by email (by-email) until auth
+// lands; lookup by id is also exposed for Orders and future callers.
+
+app.get('/api/users/by-email/:email', async (c) => {
+  try {
+    const email = c.req.param('email');
+    const res = await users.getUserByEmail({ email });
+    event('bff.user.viewed', { 'user.id': res.user?.id, lookup: 'email' });
+    return c.json(res);
+  } catch (e) {
+    return grpcError(c, e);
+  }
+});
+
+app.get('/api/users/:id', async (c) => {
+  try {
+    const res = await users.getUser({ id: c.req.param('id') });
+    event('bff.user.viewed', { 'user.id': c.req.param('id'), lookup: 'id' });
     return c.json(res);
   } catch (e) {
     return grpcError(c, e);

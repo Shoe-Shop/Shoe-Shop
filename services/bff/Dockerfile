@@ -26,8 +26,10 @@ COPY --from=build /app/dist ./dist
 # Downstream contracts for the runtime gRPC clients (loaded by proto-loader).
 COPY proto/catalogue ./proto/catalogue
 COPY proto/cart ./proto/cart
+COPY proto/users ./proto/users
 ENV CATALOGUE_PROTO=/app/proto/catalogue/v1/catalogue.proto
 ENV CART_PROTO=/app/proto/cart/v1/cart.proto
+ENV USERS_PROTO=/app/proto/users/v1/users.proto
 EXPOSE 8080
 # distroless nodejs entrypoint is `node`; these are its args.
 CMD ["-r", "./dist/telemetry.js", "./dist/index.js"]

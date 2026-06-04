@@ -1,12 +1,14 @@
 // Typed client for the BFF read path. Server components call over the Docker
 // network; client components call the published host port (see env.ts).
-import { bffBaseUrl, DEMO_USER_ID } from "./env";
+import { bffBaseUrl, DEMO_ACCOUNT_EMAIL, DEMO_USER_ID } from "./env";
 import type {
   Cart,
   CartResponse,
   Product,
   ProductResponse,
   ProductsResponse,
+  User,
+  UserResponse,
 } from "./types";
 
 class BffError extends Error {
@@ -115,6 +117,19 @@ export async function clearCart(userId = DEMO_USER_ID): Promise<Cart> {
     { method: "DELETE", cache: "no-store" },
   );
   return data.cart;
+}
+
+// ── Account (Users) ──────────────────────────────────────────────────
+// Per-user identity, so never cached. Until auth lands the account page
+// resolves the seeded demo shopper by email.
+export async function getAccount(
+  email = DEMO_ACCOUNT_EMAIL,
+): Promise<User> {
+  const data = await getJson<UserResponse>(
+    `/api/users/by-email/${encodeURIComponent(email)}`,
+    { cache: "no-store" },
+  );
+  return data.user;
 }
 
 export { BffError };
