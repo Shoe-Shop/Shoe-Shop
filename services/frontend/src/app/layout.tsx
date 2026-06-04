@@ -6,6 +6,7 @@ import { SiteFooter } from "@/components/chrome/site-footer";
 import { SkinSwitcher } from "@/components/skin/skin-switcher";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { CartDrawer } from "@/components/cart/cart-drawer";
+import { WebVitalsReporter } from "@/components/analytics/web-vitals-reporter";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const oswald = Oswald({
@@ -58,6 +59,7 @@ export default function RootLayout({
           <SiteFooter />
           <CartDrawer />
           <SkinSwitcher />
+          <WebVitalsReporter />
         </CartProvider>
       </body>
     </html>

@@ -16,7 +16,16 @@
     "lucide-react": "^0.460.0",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.0.0",
-    "class-variance-authority": "^0.7.1"
+    "class-variance-authority": "^0.7.1",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/api-logs": "^0.218.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
+    "@opentelemetry/exporter-logs-otlp-grpc": "^0.218.0",
+    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.218.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.218.0",
+    "@opentelemetry/sdk-logs": "^0.218.0",
+    "@opentelemetry/sdk-metrics": "^2.7.1",
+    "@opentelemetry/sdk-node": "^0.218.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

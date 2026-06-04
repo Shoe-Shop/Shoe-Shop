@@ -6,6 +6,7 @@ import { Hero } from "@/components/home/hero";
 import { ProductCard } from "@/components/product/product-card";
 import { Marquee } from "@/components/home/marquee";
 import { Campaign } from "@/components/home/campaign";
+import { event } from "@/lib/telemetry";
 
 // Always render against the live catalogue (and avoid baking a build-time
 // "offline" snapshot when the BFF isn't reachable during the image build).
@@ -32,6 +33,11 @@ export default async function HomePage() {
   }
 
   const latest = products.slice(0, 8);
+
+  event('frontend.page.viewed', {
+    'page.name': 'home',
+    'products.count': products.length,
+  });
 
   return (
     <>

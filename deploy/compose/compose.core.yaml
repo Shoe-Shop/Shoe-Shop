@@ -15,20 +15,44 @@ x-stub: &stub
   networks: [shoeshop]
 
 services:
-  # ── Frontend — TypeScript · Next.js 15 ───────────────────────────
+  # ── Frontend — TypeScript · Next.js 15 (NEXUS storefront) ───────────────────
+  # Real service (v0.2). Next.js 15 App Router; reads catalogue/cart/search via
+  # the BFF. OTel is bootstrapped via src/instrumentation.ts (register() hook)
+  # with NodeSDK → OTLP/gRPC. gRPC packages are marked serverExternalPackages
+  # in next.config.ts so webpack does not try to bundle them. Build context is
+  # services/frontend (no repo-root proto dependency needed).
   frontend:
-    <<: *stub
-    # build: { context: ../../services/frontend }
+    build:
+      context: ../../services/frontend
+    image: shoeshop/frontend:dev
+    restart: unless-stopped
+    networks: [shoeshop]
     container_name: shoeshop-frontend
     environment:
       OTEL_SERVICE_NAME: frontend
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      # Trim resource detectors to env-only — keeps host.*/process.* off
+      # Loki/Prometheus labels, matching the other JS/TS services (BFF, Cart).
+      OTEL_NODE_RESOURCE_DETECTORS: env
+      # Disable Next.js anonymous usage telemetry inside the container.
+      NEXT_TELEMETRY_DISABLED: "1"
+      # BFF reachability: server components use the internal Docker hostname;
+      # browser code uses the published host port (via NEXT_PUBLIC_*).
+      BFF_INTERNAL_URL: http://bff:8080
+      NEXT_PUBLIC_BFF_URL: http://localhost:${BFF_PORT:-9001}
     ports:
-      - "${FRONTEND_PORT:-9000}:80"
+      - "${FRONTEND_PORT:-9000}:3000"
     depends_on:
       bff: { condition: service_started }
+      otel-lgtm: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     mem_limit: 256m
 
   # ── BFF — TypeScript · Hono (trace root) ─────────────────────────

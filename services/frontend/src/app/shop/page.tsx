@@ -3,6 +3,7 @@ import { listProducts, searchProducts } from "@/lib/api";
 import type { Product } from "@/lib/types";
 import { ProductCard } from "@/components/product/product-card";
 import { FilterBar } from "@/components/shop/filter-bar";
+import { event } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,23 @@ export default async function ShopPage({
   if (tag) results = results.filter((p) => p.tags.includes(tag));
   results = sortProducts(results, sort);
 
-  const activeFilters = [q && `“${q}”`, brand, tag].filter(Boolean);
+  if (q) {
+    event('frontend.search.performed', {
+      'search.query': q,
+      'search.results_count': results.length,
+      ...(brand && { 'search.brand_filter': brand }),
+      ...(tag && { 'search.tag_filter': tag }),
+    });
+  } else {
+    event('frontend.page.viewed', {
+      'page.name': 'shop',
+      'products.count': results.length,
+      ...(brand && { 'filter.brand': brand }),
+      ...(tag && { 'filter.tag': tag }),
+    });
+  }
+
+  const activeFilters = [q && `”${q}”`, brand, tag].filter(Boolean);
 
   return (
     <div className="pt-16 sm:pt-20">

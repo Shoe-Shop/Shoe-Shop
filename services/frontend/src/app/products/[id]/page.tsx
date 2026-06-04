@@ -9,6 +9,7 @@ import { formatPrice } from "@/lib/utils";
 import { PdpGallery } from "@/components/product/pdp-gallery";
 import { AddToBag } from "@/components/product/add-to-bag";
 import { ProductCard } from "@/components/product/product-card";
+import { event } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,13 @@ export default async function ProductPage({ params }: { params: Params }) {
   const { id } = await params;
   const product = await fetchProduct(id);
   if (!product) notFound();
+
+  event('frontend.product.viewed', {
+    'product.id': product.id,
+    'product.name': product.name,
+    'product.brand': product.brand,
+    'product.price_cents': product.priceCents,
+  });
 
   let related: Product[] = [];
   try {

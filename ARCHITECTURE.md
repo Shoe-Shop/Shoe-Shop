@@ -6,8 +6,13 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-04 (NEXUS frontend read path shipped — Next.js 15 App
-> Router storefront with live BFF calls is now real; §2 / §4 / §11 updated.
+> _Last updated: 2026-06-04 (Frontend MELT instrumentation wired — `src/instrumentation.ts`
+> bootstraps NodeSDK; `src/lib/telemetry.ts` provides log/event helpers; Web Vitals
+> captured client-side → `/api/vitals` → OTel histograms; domain events emitted from
+> RSC page handlers; compose.core.yaml updated from stub to real build. Matrix cells
+> remain ⬜ until verified live in Grafana. Previously: NEXUS frontend read path
+> shipped — Next.js 15 App Router storefront with live BFF calls is now real; §2 / §4 /
+> §11 updated.
 > Previously: BFF MELT-complete — **all 4 real services are four-signal
 > MELT-complete**, verified correlated in the LGTM bundle; Go reference + Python,
 > Node and TS retrofits landed, §9. The retrofit phase is done. Both JS/TS services
@@ -332,6 +337,7 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 | users | Python | ✅ | ✅ | ✅ | ✅ | ✅ (first retrofit — verified correlated) |
 | cart | Node | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, see note) |
 | bff | TS | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, same JS gap as Cart) |
+| frontend | TS · Next.js 15 | ⬜† | ⬜ | ⬜ | ⬜ | ⬜ (code wired — verify in Grafana after first Docker run) |
 
 > ✅ emitted & validated · ⬜ not yet · update a cell only after verifying the
 > signal in Grafana, not on writing the code.
@@ -597,6 +603,57 @@ gRPC server — so RED is **HTTP-server-side**, not gRPC.
 > `0.218.0` · `api` `1.9.1`. **No metric exemplars in OTel-JS** — the metric↔trace
 > join is delegated to the bundle's Tempo metrics-generator (see above). RED is the
 > http instrumentation's own metric (no interceptor).
+
+### Frontend MELT implementation (Next.js 15 — wired 2026-06-04, verify in Grafana)
+
+The frontend MELT bootstrap follows the same OTel-JS family as BFF/Cart. Key files:
+[`services/frontend/src/instrumentation.ts`](services/frontend/src/instrumentation.ts) —
+the Next.js `register()` hook (called once at startup, before any request);
+[`services/frontend/src/lib/telemetry.ts`](services/frontend/src/lib/telemetry.ts) —
+server-side `log` / `event` helpers for RSC page handlers.
+
+**Where Frontend diverges from BFF:**
+- OTel is initialised via **`register()` in `instrumentation.ts`** (Next.js's
+  instrumentation hook, stable in Next.js 15), not via `node -r ...` at startup.
+  All OTel imports inside `register()` are **dynamic** (`await import(...)`) to
+  prevent Next.js's bundler from trying to bundle gRPC native modules (gRPC packages
+  are also listed in `serverExternalPackages` in `next.config.ts`).
+- **Traces (T):** Next.js instruments RSC page renders and server-side `fetch` calls
+  internally via `@opentelemetry/api`; those spans flow to the registered
+  TracerProvider automatically. `instrumentation-http` adds CLIENT spans for
+  outgoing server-side fetch → BFF calls. `/_next/*` and `/api/healthz` are
+  excluded from traces and the RED metric (not user traffic).
+- **Metrics (M):** `instrumentation-http` (stable semconv,
+  `OTEL_SEMCONV_STABILITY_OPT_IN=http`) emits `http.server.request.duration`
+  (seconds-scale, same View buckets as BFF) for server-side RED.
+  **Web Vitals** (LCP, CLS, INP, FCP, TTFB) are captured client-side by
+  `<WebVitalsReporter />` (`useReportWebVitals` → `fetch POST /api/vitals`) and
+  recorded in the `/api/vitals` route handler as `frontend.web_vital.{lcp,cls,...}`
+  OTel histograms — the only client-side metric bridge. JS metric-exemplar gap
+  applies here too (§9 Per-stack exemplar policy); Tempo metrics-generator handles
+  the metric↔trace join.
+- **Logs (L):** `telemetry.ts` `log()` fans out to stdout JSON (so
+  `task logs -- frontend` works) and the Logs API → OTLP → Loki. In-request records
+  carry `trace_id`/`span_id` from the active RSC page span. Scope:
+  `shoeshop/frontend`.
+- **Events (E):** Domain events emitted from RSC page handlers inside the active
+  RSC span — `frontend.page.viewed` (home, shop), `frontend.product.viewed` (PDP),
+  `frontend.search.performed` (shop with query). Each carries domain attributes
+  (`page.name`, `product.id`, `search.query`, counts). Events carry `trace_id`/
+  `span_id` automatically (Logs API reads the active context).
+- **Correlation:** `trace_id` from the RSC span joins logs + events in Loki to the
+  same render trace in Tempo. Exemplar → trace pivot uses the bundle's Tempo
+  metrics-generator (`traces_spanmetrics_*{service="frontend"}`).
+
+> **Matrix cells stay ⬜ until verified live in Grafana** — update them after
+> confirming in the LGTM bundle that all four signals arrive and the `trace_id`
+> join works end-to-end.
+
+> **OTel package set** (same verified versions as BFF/Cart):
+> `@opentelemetry/sdk-node` `0.218.0` · `auto-instrumentations-node` `0.76.0` ·
+> `sdk-metrics` `2.7.1` · `sdk-logs`/`api-logs`/OTLP exporters `0.218.0` ·
+> `api` `1.9.1`. `serverExternalPackages` in `next.config.ts` exempts gRPC +
+> auto-instrumentations from webpack bundling.
 
 ---
 
