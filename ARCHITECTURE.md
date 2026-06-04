@@ -6,11 +6,19 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-04 (Frontend MELT instrumentation wired — `src/instrumentation.ts`
-> bootstraps NodeSDK; `src/lib/telemetry.ts` provides log/event helpers; Web Vitals
-> captured client-side → `/api/vitals` → OTel histograms; domain events emitted from
-> RSC page handlers; compose.core.yaml updated from stub to real build. Matrix cells
-> remain ⬜ until verified live in Grafana. Previously: NEXUS frontend read path
+> _Last updated: 2026-06-04 (**Frontend MELT-complete — verified correlated live in
+> Grafana; 5 of 11 services MELT-complete**. Two build bugs in the wired
+> instrumentation were fixed first: `useReportWebVitals` is imported from
+> `next/web-vitals` (not `next/navigation`), and the Logs API type is `LogAttributes`
+> (not `Attributes`) — the shipped image had never compiled. After rebuild: RED
+> (`http_server_request_duration_seconds`), all 5 Web Vitals histograms, trace_id/
+> span_id on every log/event, `frontend → bff → catalogue` traces, and
+> `traces_spanmetrics{service="frontend"}` exemplars whose `traceID`s match the
+> Loki event `trace_id`s — exemplar→trace→log proven. §2 / §9 matrix updated.
+> Previously: Frontend MELT instrumentation wired — `src/instrumentation.ts`
+> bootstraps NodeSDK; `src/lib/telemetry.ts` log/event helpers; Web Vitals →
+> `/api/vitals` → OTel histograms; domain events from RSC page handlers;
+> compose.core.yaml stub → real build. Previously: NEXUS frontend read path
 > shipped — Next.js 15 App Router storefront with live BFF calls is now real; §2 / §4 /
 > §11 updated.
 > Previously: BFF MELT-complete — **all 4 real services are four-signal
@@ -71,34 +79,35 @@ This is the most important section — do not assume more is built than is liste
 | **BFF** (Hono/TS, gRPC client → Catalogue + Cart, OTel auto-instr) | ✅ **Done & validated** (v0.2) — cross-service traces `bff → catalogue` and `bff → cart → redis` |
 | **Cart** (Node/TS, gRPC, Redis, OTel auto-instr) | ✅ **Done & validated** (v0.2) — gRPC → Redis (ioredis) spans in Tempo |
 | **Users** (Python 3.12, FastAPI + gRPC, Postgres, OTel) | ✅ **Done & validated** (v0.2) — multi-span `gRPC RPC → Postgres query` traces in Tempo |
-| **Frontend** (Next.js 15 App Router, NEXUS storefront) | ✅ **Done** (read path) — home · shop (search + filter + sort) · PDP · cart · account; live BFF calls; MELT instrumentation **not yet wired** |
+| **Frontend** (Next.js 15 App Router, NEXUS storefront) | ✅ **Done & MELT-complete** (v0.2-MELT) — home · shop (search + filter + sort) · PDP · cart · account; live BFF calls; four signals **verified correlated** in Grafana (RED + Web Vitals histograms, trace_id-stamped logs/events, frontend→bff→catalogue traces, spanmetrics exemplars) |
 | orders, payment | 🟡 **Stubs** (`traefik/whoami`) — real ports/limits/deps, no logic |
 | shipping, inventory, recommendation, notification | 🟡 **Stubs** (full profile) |
 | Zitadel auth | 🟡 Wired in `full` profile, not yet integrated |
 | Incident / chaos framework | 🔴 **Planned** (see §11) |
 | k3d / Helm / Argo CD / Istio paths | 🔴 **Planned / documented only** |
 
-**Rule of thumb:** Catalogue, the BFF, Cart, Users, + the 5 infra containers
-contain real backend behaviour. The **Frontend** (NEXUS, Next.js 15) is now also
-real — it calls the BFF live for catalogue, search and cart. Orders, payment,
-shipping, inventory, recommendation and notification remain `traefik/whoami`
-placeholders. All four backend services now live in the **`core` profile**, so a
-plain `task up:core` brings up the full MELT-complete set together (Users moved
-`full → core` in step 5; it depends only on the always-on Postgres + otel-lgtm).
+**Rule of thumb:** Catalogue, the BFF, Cart, Users, the **Frontend**, + the 5 infra
+containers contain real behaviour. The **Frontend** (NEXUS, Next.js 15) calls the
+BFF live for catalogue, search and cart, and is now itself MELT-complete. Orders,
+payment, shipping, inventory, recommendation and notification remain
+`traefik/whoami` placeholders. All five real services now live in the **`core`
+profile**, so a plain `task up:core` brings up the full MELT-complete set together
+(Users moved `full → core` in step 5; it depends only on the always-on Postgres +
+otel-lgtm).
 
-> **✅ Telemetry reality (the retrofit is complete).** **All four real services —
-> Catalogue (Go), Users (Python), Cart (Node) and BFF (TS) — are MELT-complete:**
-> Metrics + Events + Logs + Traces emitted and **verified correlated** in the LGTM
-> bundle (§9). Per ADR-0002 the golden standard is **four correlated signals
-> (MELT)**, so **4 of 11 services are MELT-complete** (the other 7 are
-> `traefik/whoami` stubs that emit nothing real). The v0.2-MELT retrofit phase is
-> done **and Users has been moved `full → core` (step 5)**, so all four
-> MELT-complete services now come up and validate together on the default
-> `core` profile; next is resuming features — each born MELT-complete. Coverage
-> is tracked in the matrix in §9. (Both JS/TS services —
-> Cart and BFF — carry a documented JS-stack exemplar caveat: their metric↔trace
-> exemplars come from the bundle's Tempo metrics-generator, not the OTel-JS SDK;
-> see the §9 Per-stack exemplar policy.)
+> **✅ Telemetry reality (the retrofit is complete; Frontend now MELT-complete too).**
+> **All five real services — Catalogue (Go), Users (Python), Cart (Node), BFF (TS)
+> and the Frontend (Next.js 15) — are MELT-complete:** Metrics + Events + Logs +
+> Traces emitted and **verified correlated** in the LGTM bundle (§9). Per ADR-0002
+> the golden standard is **four correlated signals (MELT)**, so **5 of 11 services
+> are MELT-complete** (the other 6 are `traefik/whoami` stubs that emit nothing
+> real). The v0.2-MELT retrofit phase is done **and Users has been moved `full →
+> core` (step 5)**, so all five MELT-complete services come up and validate together
+> on the default `core` profile; next is resuming features — each born
+> MELT-complete. Coverage is tracked in the matrix in §9. (All three JS/TS services
+> — Cart, BFF **and the Frontend** — carry a documented JS-stack exemplar caveat:
+> their metric↔trace exemplars come from the bundle's Tempo metrics-generator, not
+> the OTel-JS SDK; see the §9 Per-stack exemplar policy.)
 
 ---
 
@@ -337,7 +346,7 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 | users | Python | ✅ | ✅ | ✅ | ✅ | ✅ (first retrofit — verified correlated) |
 | cart | Node | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, see note) |
 | bff | TS | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, same JS gap as Cart) |
-| frontend | TS · Next.js 15 | ⬜† | ⬜ | ⬜ | ⬜ | ⬜ (code wired — verify in Grafana after first Docker run) |
+| frontend | TS · Next.js 15 | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, same JS gap as Cart/BFF) |
 
 > ✅ emitted & validated · ⬜ not yet · update a cell only after verifying the
 > signal in Grafana, not on writing the code.
@@ -367,6 +376,22 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 > empty, live), so the metric↔trace join is provided by the bundle's Tempo
 > metrics-generator (`traces_spanmetrics_latency_bucket{service="bff"}` with
 > `traceID` exemplars). The trace↔log/event join is native and fully proven.
+>
+> **† Frontend Metrics — same JS-stack exemplar gap (verified in Docker).** The
+> Frontend (Next.js 15, OTel-JS family) emits app-level RED HTTP-server-side from
+> `@opentelemetry/instrumentation-http` with `OTEL_SEMCONV_STABILITY_OPT_IN=http`
+> (`http_server_request_duration_seconds_*{service_name="frontend"}`, seconds-scale
+> like BFF) **plus** client-side Core Web Vitals as histograms
+> (`frontend_web_vital_{lcp,cls,inp,fcp,ttfb}_*`, captured by `useReportWebVitals`
+> from `next/web-vitals` → `POST /api/vitals` → server-side `MeterProvider`). As
+> with Cart/BFF, OTel-JS attaches **no metric exemplars**, so the metric↔trace join
+> comes from the bundle's Tempo metrics-generator
+> (`traces_spanmetrics_latency_bucket{service="frontend"}` with `traceID`
+> exemplars). **Verified correlated live:** a `GET /shop?q=runner` spanmetrics
+> exemplar's `traceID` matched both a Tempo `frontend → bff → catalogue` trace and
+> the `frontend.search.performed` event's `trace_id` in Loki — exemplar → trace →
+> log/event all on one id. Outgoing server-side `fetch → bff` calls emit CLIENT
+> spans that propagate `traceparent`, so Frontend trace roots are cross-service.
 
 ### Current Traces implementation (the ✅ column above)
 

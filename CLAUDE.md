@@ -13,14 +13,16 @@ future AI SRE ("project 2"). The storefront is the vehicle, not the goal; see
 services are real today (**Frontend** Next.js 15, **Catalogue** Go, **BFF** TS,
 **Cart** Node, **Users** Python) + the 5 infra containers; the rest are
 `traefik/whoami` stubs.
-**All 4 backend services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
-BFF TS — four signals verified correlated) — **4 of 11 MELT-complete; the retrofit
-phase is done.** The **Frontend** (NEXUS — Next.js 15 App Router) is real but its
-OTel instrumentation is not yet wired. See ARCHITECTURE.md §2 / §9. Note: both
-JS/TS services (Cart **and** BFF) get their metric↔trace **exemplars from the
-bundle's Tempo metrics-generator**, because OpenTelemetry-JS does not emit metric
-exemplars (verified; documented in §9). BFF's RED is HTTP-server-side from
-`instrumentation-http` (not a hand-rolled interceptor).
+**All 5 real services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
+BFF TS, **Frontend** Next.js 15 — four signals verified correlated) — **5 of 11
+MELT-complete; the retrofit phase is done.** The **Frontend** (NEXUS — Next.js 15
+App Router) is MELT-complete and verified correlated live in Grafana (RED + Web
+Vitals histograms, trace_id-stamped logs/events, `frontend → bff → catalogue`
+traces, spanmetrics exemplars). See ARCHITECTURE.md §2 / §9. Note: all three
+JS/TS services (Cart, BFF **and the Frontend**) get their metric↔trace **exemplars
+from the bundle's Tempo metrics-generator**, because OpenTelemetry-JS does not emit
+metric exemplars (verified; documented in §9). BFF's and the Frontend's RED are
+HTTP-server-side from `instrumentation-http` (not a hand-rolled interceptor).
 
 ## Hard rules
 - **No hallucination.** Verify against the code/registry before claiming things.
@@ -65,13 +67,15 @@ Sequence:
 4. ✅ moved **Users `full` → `core`** — all 4 validate together on `task up:core`;
    `core` idles ~0.92 GB.
 
-**Frontend (done):** NEXUS storefront — Next.js 15 App Router — shipped. Pages:
-home (hero + campaign + marquee) · shop (search + filter/brand/tag + sort) · PDP ·
-cart · account. Live BFF calls. OTel instrumentation **not yet wired**.
+**Frontend (done & MELT-complete):** NEXUS storefront — Next.js 15 App Router —
+shipped and four-signal instrumented. Pages: home (hero + campaign + marquee) ·
+shop (search + filter/brand/tag + sort) · PDP · cart · account. Live BFF calls.
+OTel **wired and verified correlated live in Grafana** (5 of 11 MELT-complete):
+RED via `instrumentation-http`, Web Vitals histograms via `next/web-vitals` →
+`/api/vitals`, trace_id-stamped logs/events from RSC handlers, cross-service
+`frontend → bff → catalogue` traces, spanmetrics exemplars (JS exemplar gap, §9).
 
 **Next (immediate):**
-- Wire **OTel instrumentation on the Frontend** (Web Vitals → OTLP, RSC server spans,
-  `trace_id` in client logs — Frontend MELT-complete).
 - Wire **BFF → Users** account endpoints so the account page goes live.
 - Then **v0.3 NATS write path** (Orders, Payment, Inventory, checkout saga, rich Events).
 - Incident/chaos framework comes after enough real, MELT-complete services exist to break.
