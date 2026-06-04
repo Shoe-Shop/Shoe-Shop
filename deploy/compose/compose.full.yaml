@@ -6,7 +6,7 @@
 
 x-stub: &stub
   image: traefik/whoami:${WHOAMI_TAG:-v1.10.2}
-  restart: unless-stopped
+  restart: "no"
   networks: [shoeshop]
 
 services:
@@ -85,7 +85,7 @@ services:
   zitadel:
     image: ghcr.io/zitadel/zitadel:${ZITADEL_TAG:-latest}
     container_name: shoeshop-zitadel
-    restart: unless-stopped
+    restart: "no"
     command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY:-MasterkeyNeedsToHave32Characters}" --tlsMode disabled'
     environment:
       ZITADEL_EXTERNALSECURE: "false"

@@ -25,7 +25,7 @@ services:
   postgres:
     image: postgres:${POSTGRES_TAG:-16-alpine}
     container_name: shoeshop-postgres
-    restart: unless-stopped
+    restart: "no"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -48,7 +48,7 @@ services:
   redis:
     image: redis:${REDIS_TAG:-7-alpine}
     container_name: shoeshop-redis
-    restart: unless-stopped
+    restart: "no"
     command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -64,7 +64,7 @@ services:
   meilisearch:
     image: getmeili/meilisearch:${MEILI_TAG:-v1.10}
     container_name: shoeshop-meilisearch
-    restart: unless-stopped
+    restart: "no"
     environment:
       MEILI_ENV: ${MEILI_ENV:-development}
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-shoeshop-dev-master-key}
@@ -88,7 +88,7 @@ services:
   nats:
     image: nats:${NATS_TAG:-2.10-alpine}
     container_name: shoeshop-nats
-    restart: unless-stopped
+    restart: "no"
     command: ["-js", "-sd", "/data", "-m", "8222"]
     ports:
       - "${NATS_PORT:-4222}:4222"     # client
@@ -111,7 +111,7 @@ services:
   otel-lgtm:
     image: grafana/otel-lgtm:${OTEL_LGTM_TAG:-latest}
     container_name: shoeshop-otel-lgtm
-    restart: unless-stopped
+    restart: "no"
     ports:
       - "${GRAFANA_PORT:-3000}:3000"  # Grafana UI
       - "${OTLP_GRPC_PORT:-4317}:4317" # OTLP gRPC receiver

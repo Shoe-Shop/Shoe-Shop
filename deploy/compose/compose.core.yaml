@@ -11,7 +11,7 @@
 
 x-stub: &stub
   image: traefik/whoami:${WHOAMI_TAG:-v1.10.2}
-  restart: unless-stopped
+  restart: "no"
   networks: [shoeshop]
 
 services:
@@ -25,7 +25,7 @@ services:
     build:
       context: ../../services/frontend
     image: shoeshop/frontend:dev
-    restart: unless-stopped
+    restart: "no"
     networks: [shoeshop]
     container_name: shoeshop-frontend
     environment:
@@ -64,7 +64,7 @@ services:
       context: ../../
       dockerfile: services/bff/Dockerfile
     image: shoeshop/bff:dev
-    restart: unless-stopped
+    restart: "no"
     networks: [shoeshop]
     container_name: shoeshop-bff
     environment:
@@ -101,7 +101,7 @@ services:
       context: ../../
       dockerfile: services/catalogue/Dockerfile
     image: shoeshop/catalogue:dev
-    restart: unless-stopped
+    restart: "no"
     networks: [shoeshop]
     container_name: shoeshop-catalogue
     environment:
@@ -135,7 +135,7 @@ services:
       context: ../../
       dockerfile: services/cart/Dockerfile
     image: shoeshop/cart:dev
-    restart: unless-stopped
+    restart: "no"
     networks: [shoeshop]
     container_name: shoeshop-cart
     environment:
@@ -175,7 +175,7 @@ services:
       context: ../../
       dockerfile: services/users/Dockerfile
     image: shoeshop/users:dev
-    restart: unless-stopped
+    restart: "no"
     networks: [shoeshop]
     container_name: shoeshop-users
     environment:

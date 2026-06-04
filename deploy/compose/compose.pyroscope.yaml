@@ -7,7 +7,7 @@ services:
   pyroscope:
     image: grafana/pyroscope:${PYROSCOPE_TAG:-latest}
     container_name: shoeshop-pyroscope
-    restart: unless-stopped
+    restart: "no"
     ports:
       - "${PYROSCOPE_PORT:-4040}:4040"
     mem_limit: 256m
