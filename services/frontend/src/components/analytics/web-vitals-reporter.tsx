@@ -1,6 +1,6 @@
 'use client';
 
-import { useReportWebVitals } from 'next/navigation';
+import { useReportWebVitals } from 'next/web-vitals';
 
 // Captures Core Web Vitals (LCP, CLS, INP, FCP, TTFB) as they are measured
 // by the browser and forwards each payload to the /api/vitals server route,

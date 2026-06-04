@@ -11,7 +11,7 @@
 // Both helpers call getLogger() lazily (at emission time) so there is no
 // module-load-time dependency on the SDK initialisation order.
 
-import { logs, SeverityNumber, type Attributes } from '@opentelemetry/api-logs';
+import { logs, SeverityNumber, type LogAttributes } from '@opentelemetry/api-logs';
 
 const SCOPE = 'shoeshop/frontend';
 
@@ -23,7 +23,7 @@ function emit(
   severityNumber: SeverityNumber,
   level: string,
   msg: string,
-  attributes?: Attributes,
+  attributes?: LogAttributes,
 ): void {
   // eslint-disable-next-line no-console
   console.log(JSON.stringify({ level, msg, ...attributes }));
@@ -36,11 +36,11 @@ function emit(
 }
 
 export const log = {
-  info: (msg: string, attributes?: Attributes) =>
+  info: (msg: string, attributes?: LogAttributes) =>
     emit(SeverityNumber.INFO, 'info', msg, attributes),
-  warn: (msg: string, attributes?: Attributes) =>
+  warn: (msg: string, attributes?: LogAttributes) =>
     emit(SeverityNumber.WARN, 'warn', msg, attributes),
-  error: (msg: string, attributes?: Attributes) =>
+  error: (msg: string, attributes?: LogAttributes) =>
     emit(SeverityNumber.ERROR, 'error', msg, attributes),
 };
 
@@ -51,7 +51,7 @@ export const log = {
  * The eventName lands in the Loki log body; events are told apart from plain
  * logs by scope_name="shoeshop/frontend" + the eventName body field.
  */
-export function event(name: string, attributes?: Attributes): void {
+export function event(name: string, attributes?: LogAttributes): void {
   getLogger().emit({
     eventName: name,
     severityNumber: SeverityNumber.INFO,
