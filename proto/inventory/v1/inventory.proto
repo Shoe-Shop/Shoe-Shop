@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+// Inventory service: the system of record for product stock levels. Backed by
+// PostgreSQL (database-per-service). The SYNC read path (availability) is gRPC,
+// consumed by the BFF / catalogue surfaces; the WRITE path (reserve / release of
+// stock during checkout) is ASYNC over NATS JetStream and is intentionally NOT
+// modelled here — see docs/adr/ADR-0003 and the JSON event envelope it defines.
+package inventory.v1;
+
+option go_package = "github.com/shoeshop/shoe-shop/proto/gen/go/inventory/v1;inventoryv1";
+
+// The stock position for a single product.
+message StockLevel {
+  string product_id = 1;
+  // Sellable right now: on_hand minus reserved.
+  int32 available = 2;
+  // Held by in-flight orders (reserved by the checkout saga, not yet shipped).
+  int32 reserved = 3;
+}
+
+message GetStockRequest {
+  string product_id = 1;
+}
+
+message GetStockResponse {
+  StockLevel stock = 1;
+}
+
+message BatchGetStockRequest {
+  repeated string product_ids = 1;
+}
+
+message BatchGetStockResponse {
+  repeated StockLevel stock = 1;
+}
+
+// InventoryService exposes the stock read path over gRPC. Reservation and release
+// of stock happen asynchronously over NATS (ADR-0003), not through this service.
+service InventoryService {
+  rpc GetStock(GetStockRequest) returns (GetStockResponse);
+  rpc BatchGetStock(BatchGetStockRequest) returns (BatchGetStockResponse);
+}
