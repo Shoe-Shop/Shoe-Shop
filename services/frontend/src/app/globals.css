@@ -29,7 +29,7 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* ── Kinetic sport-tech (default) ─────────────────────────────────────
+/* ── Kinetic sport-tech (skin: "Dark") ───────────────────────────────
    Near-black stage, volt accent, condensed display caps. Energetic. */
 :root,
 [data-skin="kinetic"] {
@@ -48,27 +48,6 @@
   --radius: 2px;
   --shadow-card: 0 20px 50px -20px rgb(0 0 0 / 0.7);
   --display-tracking: 0.02em;
-  --display-transform: uppercase;
-}
-
-/* ── Cyberpunk neon-noir ─────────────────────────────────────────────
-   Violet-black void, twin neons (magenta + cyan), glow, monospace HUD. */
-[data-skin="cyber"] {
-  --bg: #07030f;
-  --surface: #120a22;
-  --fg: #ece6ff;
-  --muted: #8b7fb0;
-  --border: #2a1a4a;
-  --accent: #ff2e97;
-  --accent-2: #16f2e3;
-  --accent-fg: #07030f;
-
-  --font-display-stack: var(--font-mono), ui-monospace, monospace;
-  --font-sans-stack: var(--font-inter), system-ui, sans-serif;
-
-  --radius: 0px;
-  --shadow-card: 0 0 0 1px var(--border), 0 0 40px -8px rgb(255 46 151 / 0.45);
-  --display-tracking: 0.12em;
   --display-transform: uppercase;
 }
 
@@ -93,8 +72,9 @@
   --display-transform: none;
 }
 
-/* ── Brutalist-luxe ──────────────────────────────────────────────────
-   Paper-white, hard black rules, one hot accent, oversized caps, solid shadow. */
+/* ── Brutalist-luxe (skin: "Colorful" — the DEFAULT skin) ─────────────
+   Paper-white, hard black rules, one hot accent, oversized caps, solid shadow.
+   Also drives the dynamic shoe-tinted hero wash (see end of file). */
 [data-skin="brutalist"] {
   --bg: #f5f4f0;
   --surface: #ffffff;
@@ -136,6 +116,18 @@
     transition:
       background-color 0.5s var(--ease-out-expo),
       color 0.5s var(--ease-out-expo);
+    /* App-like: stop accidental click-drag from selecting the whole page
+       (which would paint every image/heading with the accent ::selection).
+       Real text fields opt back in below. */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
   }
   ::selection {
     background: var(--accent);
@@ -157,7 +149,7 @@
     background-clip: text;
     color: transparent;
   }
-  /* Subtle dotted stage grid (kinetic/cyber). */
+  /* Subtle dotted stage grid (kinetic). */
   .bg-grid {
     background-image: radial-gradient(
       var(--border) 1px,
@@ -165,4 +157,55 @@
     );
     background-size: 28px 28px;
   }
+}
+
+/* ── Colorful skin: hero background tracks the featured shoe ───────────
+   The hero (components/home/hero.tsx) exposes the active shoe's signature
+   colours as --shoe-from / --shoe-to. ONLY the Colorful skin paints the full
+   wash; on every other skin the wash + spotlight stay invisible, so this is
+   purely additive. A white spotlight + drop-shadow keep the shoe lifted off
+   the colour so it never blends into its own background (true even for dark
+   shoes). Registering the colours with @property lets the wash tween smoothly
+   as the featured shoe rotates. */
+@property --shoe-from {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --shoe-to {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+.hero-wash,
+.hero-spotlight {
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-out-expo);
+}
+
+[data-skin="brutalist"] .hero-wash {
+  opacity: 1;
+  /* The whole hero becomes a soft, lighter shade of the featured shoe's colour
+     — a full-bleed studio cyclorama (cf. the reference). Mixed heavily toward
+     the paper bg so it stays light enough for the near-black copy to read; the
+     saturated shoe + white spotlight + drop-shadow make it pop off its own hue. */
+  background: color-mix(in srgb, var(--shoe-from) 26%, var(--bg));
+  transition:
+    --shoe-from 0.7s var(--ease-out-expo),
+    opacity 0.5s var(--ease-out-expo);
+}
+
+[data-skin="brutalist"] .hero-spotlight {
+  opacity: 1;
+  background: radial-gradient(
+    closest-side at 50% 52%,
+    rgb(255 255 255 / 0.62),
+    rgb(255 255 255 / 0.16) 56%,
+    transparent 74%
+  );
+}
+
+[data-skin="brutalist"] .hero-shoe {
+  filter: drop-shadow(0 26px 34px rgb(0 0 0 / 0.34));
 }

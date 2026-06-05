@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, Plus } from "lucide-react";
@@ -12,6 +13,19 @@ import { useCart } from "@/components/cart/cart-provider";
 
 const AUTOPLAY_MS = 5000;
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
+
+// Fixed orbit "slots" for the revolving hero (4 featured shoes). Each shoe
+// animates between these as the carousel advances, so the secondary shoes sit
+// small and far out in open space and grow as they come to the front — never
+// overlapping or getting clipped by the centre shoe. x / y are percentages of
+// the stage (negative y = up). The cycle a shoe travels is 0 → 3 → 2 → 1 → 0:
+// front-centre → left → upper-left (farthest) → upper-right (incoming) → front.
+const HERO_SLOTS = [
+  { x: 0, y: 2, scale: 1, opacity: 1, z: 40 }, //   0 front — centre, full size
+  { x: 46, y: -44, scale: 0.3, opacity: 0.72, z: 22 }, // 1 incoming — upper right
+  { x: -20, y: -34, scale: 0.24, opacity: 0.5, z: 16 }, // 2 farthest — upper left
+  { x: -50, y: -4, scale: 0.4, opacity: 0.82, z: 26 }, // 3 outgoing — left, mid
+] as const;
 
 export function Hero({ products }: { products: Product[] }) {
   const featured = products.slice(0, 4);
@@ -34,7 +48,19 @@ export function Hero({ products }: { products: Product[] }) {
   const accent = productAccent(active.id);
 
   return (
-    <section className="relative flex min-h-screen flex-col overflow-hidden bg-bg pt-16 sm:pt-20">
+    <section
+      className="relative flex min-h-screen flex-col overflow-hidden bg-bg pt-16 sm:pt-20"
+      style={
+        {
+          "--shoe-from": accent.from,
+          "--shoe-to": accent.to,
+        } as CSSProperties
+      }
+    >
+      {/* Colorful skin only: full-background wash tinted by the featured shoe
+          (gated + tweened in globals.css via [data-skin="brutalist"]). */}
+      <div className="hero-wash pointer-events-none absolute inset-0" />
+
       {/* Accent glow — recolours per featured shoe. */}
       <AnimatePresence mode="popLayout">
         <motion.div
@@ -108,24 +134,39 @@ export function Hero({ products }: { products: Product[] }) {
           </div>
         </div>
 
-        {/* Product stage */}
-        <div className="relative order-1 flex h-[42vh] items-center justify-center lg:order-2 lg:h-[70vh]">
-          <AnimatePresence mode="popLayout">
-            <motion.div
-              key={active.id}
-              initial={{ opacity: 0, x: 80, rotate: 6 }}
-              animate={{ opacity: 1, x: 0, rotate: -8 }}
-              exit={{ opacity: 0, x: -80, rotate: -14 }}
-              transition={{ duration: 0.7, ease: EASE }}
-              className="absolute inset-0"
-            >
-              <ProductMedia product={active} priority className="h-full w-full" sizes="50vw" />
-            </motion.div>
-          </AnimatePresence>
-          {/* Ghosted index numeral */}
-          <span className="pointer-events-none absolute -z-0 select-none font-display text-[40vh] font-bold leading-none text-fg/[0.04]">
-            {String(index + 1).padStart(2, "0")}
-          </span>
+        {/* Product stage — every featured shoe orbits an ellipse; the front one
+            is active. This "revolving" carousel is the storefront's signature
+            moment. Shoes are visual only (pointer-events-none); navigation is the
+            selector bar below + autoplay. */}
+        <div className="pointer-events-none relative order-1 flex h-[42vh] items-center justify-center [perspective:1200px] lg:order-2 lg:h-[70vh]">
+          {/* Colorful skin only: white spotlight lifts the front shoe off the wash. */}
+          <div className="hero-spotlight pointer-events-none absolute inset-0" />
+          {featured.map((p, i) => {
+            const slot = (i - index + featured.length) % featured.length;
+            const pos = HERO_SLOTS[slot] ?? HERO_SLOTS[0];
+            return (
+              <motion.div
+                key={p.id}
+                className="hero-shoe absolute inset-0 flex items-center justify-center"
+                initial={false}
+                animate={{
+                  x: `${pos.x}%`,
+                  y: `${pos.y}%`,
+                  scale: pos.scale,
+                  opacity: pos.opacity,
+                }}
+                transition={{ duration: 0.9, ease: EASE }}
+                style={{ zIndex: pos.z }}
+              >
+                <ProductMedia
+                  product={p}
+                  priority={slot === 0}
+                  className="h-full w-full"
+                  sizes="(max-width: 1024px) 70vw, 40vw"
+                />
+              </motion.div>
+            );
+          })}
         </div>
       </div>
 

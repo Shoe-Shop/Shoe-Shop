@@ -14,17 +14,14 @@ export const SORT_OPTIONS = [
 
 export function FilterBar({
   brands,
-  tags,
 }: {
   brands: string[];
-  tags: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
 
   const brand = sp.get("brand") ?? "";
-  const tag = sp.get("tag") ?? "";
   const sort = sp.get("sort") ?? "featured";
   const q = sp.get("q") ?? "";
   const [search, setSearch] = useState(q);
@@ -94,7 +91,7 @@ export function FilterBar({
           </div>
         </div>
 
-        {/* Brand + tag chips */}
+        {/* Brand chips */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Chip active={!brand} onClick={() => setParam("brand", "")}>
             All Brands
@@ -102,12 +99,6 @@ export function FilterBar({
           {brands.map((b) => (
             <Chip key={b} active={brand === b} onClick={() => setParam("brand", brand === b ? "" : b)}>
               {b}
-            </Chip>
-          ))}
-          <span className="mx-1 h-5 w-px bg-border" />
-          {tags.map((t) => (
-            <Chip key={t} small active={tag === t} onClick={() => setParam("tag", tag === t ? "" : t)}>
-              {t}
             </Chip>
           ))}
         </div>

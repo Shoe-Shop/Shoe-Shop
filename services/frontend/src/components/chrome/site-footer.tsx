@@ -13,9 +13,9 @@ const COLUMNS = [
   {
     title: "House Brands",
     links: [
-      { label: "Hballo", href: "/shop?brand=Hballo" },
+      { label: "Aether", href: "/shop?brand=Aether" },
+      { label: "Apex", href: "/shop?brand=Apex" },
       { label: "Stride", href: "/shop?brand=Stride" },
-      { label: "Vellum", href: "/shop?brand=Vellum" },
       { label: "Summit", href: "/shop?brand=Summit" },
     ],
   },

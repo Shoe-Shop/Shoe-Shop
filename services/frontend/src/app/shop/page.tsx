@@ -49,7 +49,6 @@ export default async function ShopPage({
     all = [];
   }
   const brands = [...new Set(all.map((p) => p.brand))].filter(Boolean).sort();
-  const tags = [...new Set(all.flatMap((p) => p.tags))].filter(Boolean).sort();
 
   // Results: search-backed when there's a query, else the full set.
   let results = all;
@@ -91,7 +90,7 @@ export default async function ShopPage({
         <h1 className="font-display text-5xl text-fg sm:text-7xl">Shop All</h1>
       </header>
 
-      <FilterBar brands={brands} tags={tags} />
+      <FilterBar brands={brands} />
 
       <section className="mx-auto max-w-[1600px] px-5 py-10 sm:px-10">
         <p className="mb-8 text-sm text-muted">

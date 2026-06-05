@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { listProducts } from "@/lib/api";
 import type { Product } from "@/lib/types";
 import { Hero } from "@/components/home/hero";
-import { ProductCard } from "@/components/product/product-card";
+import { FeaturedDrops } from "@/components/home/featured-drops";
 import { Marquee } from "@/components/home/marquee";
 import { Campaign } from "@/components/home/campaign";
 import { event } from "@/lib/telemetry";
@@ -32,7 +32,53 @@ export default async function HomePage() {
     );
   }
 
-  const latest = products.slice(0, 8);
+  // Curated home-page selections, pinned by stable product ID so they never
+  // drift when the catalogue re-sorts (it lists alphabetically by name). The
+  // revolving hero and Latest Drops share no shoe, and Phantom is reserved for
+  // the Campaign band below — so the page never repeats a shoe.
+  const byId = new Map(products.map((p) => [p.id, p]));
+
+  // Revolving hero — 4 shoes, in orbit order.
+  const HERO_IDS = [
+    "sku-court-classic", // Apex
+    "sku-pace-setter", // Aura V1
+    "sku-cloud-walker", // Veloce
+    "sku-summit-hiker", // Pulse Shadow
+  ];
+  const heroProducts = HERO_IDS.map((id) => byId.get(id)).filter(
+    (p): p is Product => Boolean(p),
+  );
+  // Safety net: if a curated ID is ever missing, top up so the hero still has 4.
+  for (const p of products) {
+    if (heroProducts.length >= 4) break;
+    if (heroProducts.some((h) => h.id === p.id)) continue;
+    heroProducts.push(p);
+  }
+
+  // Latest Drops — Vampire highlighted, plus two other non-hero, non-Phantom
+  // drops. Falls back gracefully to fill any gap.
+  const heroIds = new Set(heroProducts.map((p) => p.id));
+  const EXCLUDED_IDS = new Set(["sku-canvas-low"]); // Phantom → Campaign band
+  const PREFERRED_DROP_IDS = [
+    "sku-river-sandal", // Vampire — the highlighted feature
+    "sku-aurora-runner", // Solaris V1
+    "sku-tempo-racer", // Pulse
+  ];
+  const latest: Product[] = [];
+  const taken = new Set<string>();
+  for (const id of PREFERRED_DROP_IDS) {
+    const p = byId.get(id);
+    if (p && !taken.has(id)) {
+      latest.push(p);
+      taken.add(id);
+    }
+  }
+  for (const p of products) {
+    if (latest.length >= 3) break;
+    if (heroIds.has(p.id) || EXCLUDED_IDS.has(p.id) || taken.has(p.id)) continue;
+    latest.push(p);
+    taken.add(p.id);
+  }
 
   event('frontend.page.viewed', {
     'page.name': 'home',
@@ -41,7 +87,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <Hero products={products} />
+      <Hero products={heroProducts} />
 
       <Marquee
         items={[
@@ -56,9 +102,6 @@ export default async function HomePage() {
       <section className="mx-auto max-w-[1600px] px-5 py-20 sm:px-10 sm:py-28">
         <div className="mb-12 flex items-end justify-between">
           <div>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.3em] text-muted">
-              The Index
-            </p>
             <h2 className="font-display text-4xl text-fg sm:text-6xl">
               Latest Drops
             </h2>
@@ -72,11 +115,7 @@ export default async function HomePage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
-          {latest.map((product, i) => (
-            <ProductCard key={product.id} product={product} index={i} />
-          ))}
-        </div>
+        <FeaturedDrops products={latest} />
       </section>
 
       <Campaign />

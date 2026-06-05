@@ -1,45 +1,37 @@
-# Product imagery — drop your generated PNGs here
+# Product imagery (catalogue cutouts)
 
-**Folder:** `E:\Shoe-Shop\services\frontend\public\img\`
-(served by the app at `/img/...`)
+These are the **transparent (RGBA) product cutouts** the storefront renders on
+cards, the hero stage and the PDP. The catalogue serves each product's
+`imageUrl` (the `/img/<slug>.png` below); the file name must match exactly or the
+product falls back to the on-brand accent placeholder (never a broken image).
 
-The storefront loads each product's **main image** from the BFF's exact
-`imageUrl` — which is the slug below, **no `sku-` prefix and no suffix**. Name
-the files exactly as listed or they won't wire up.
+The set was re-themed (2026-06-05) to a premium athletic / streetwear / cyber
+line so every photo matches its product. **SKU IDs are stable** — inventory
+stock and carts reference them; only name/price/imagery changed
+(`services/catalogue/internal/store/seed.sql`).
 
-## Naming convention
+## Mapping: SKU id → file → product
 
-| Role | Filename pattern | Used by |
-|------|------------------|---------|
-| **Primary** (required) | `<slug>.png` | cards, hero, PDP main |
-| Side profile | `<slug>-side.png` | PDP gallery |
-| Top-down | `<slug>-top.png` | PDP gallery |
+| SKU id | File (`/img/…`) | Product | Brand | Look |
+|--------|-----------------|---------|-------|------|
+| sku-aurora-runner | `solaris-max.png`   | Solaris Max    | Stride | orange max runner |
+| sku-trail-breaker | `terra-trail.png`   | Terra Trail    | Aether | olive trail runner |
+| sku-court-classic | `court-apex.png`    | Court Apex     | Apex   | cobalt basketball high-top |
+| sku-cloud-walker  | `ember-knit.png`    | Ember Knit     | Stride | red knit runner |
+| sku-tempo-racer   | `tempo-racer.png`   | Tempo Racer    | Stride | red racing flat |
+| sku-summit-hiker  | `shadow-runner.png` | Shadow Runner  | Stride | black blade runner |
+| sku-studio-flex   | `vortex-mid.png`    | Vortex Mid     | Apex   | black/orange tech mid |
+| sku-metro-slide   | `onyx-high.png`     | Vampire Noir   | Apex   | all-black vampire high-top |
+| sku-pace-setter   | `flux-pace.png`     | Flux Pace      | Stride | white/orange high-top |
+| sku-canvas-low    | `phantom.png`       | Phantom        | Aether | crimson/silver cyber |
+| sku-glacier-boot  | `neurovibe.png`     | Neurovibe MX   | Aether | black/orange cyber |
+| sku-river-sandal  | `vampire.png`       | Vampire        | Apex   | black + bone-white vampire |
 
-> Only the **primary** is strictly required for the site to look complete; the
-> `-side` / `-top` angles light up the PDP gallery as they arrive. Until a file
-> exists, that product shows an intentional accent placeholder (not a broken
-> image), so you can drop them in any order.
-
-## The 12 real SKUs → exact filenames
-
-| Shoe | Brand | Primary (required) | Side | Top |
-|------|-------|--------------------|------|-----|
-| Aurora Runner | Hballo | `aurora-runner.png` | `aurora-runner-side.png` | `aurora-runner-top.png` |
-| Trail Breaker GTX | Hballo | `trail-breaker.png` | `trail-breaker-side.png` | `trail-breaker-top.png` |
-| Court Classic | Vellum | `court-classic.png` | `court-classic-side.png` | `court-classic-top.png` |
-| Cloud Walker | Vellum | `cloud-walker.png` | `cloud-walker-side.png` | `cloud-walker-top.png` |
-| Tempo Racer Carbon | Stride | `tempo-racer.png` | `tempo-racer-side.png` | `tempo-racer-top.png` |
-| Summit Hiker Mid | Stride | `summit-hiker.png` | `summit-hiker-side.png` | `summit-hiker-top.png` |
-| Studio Flex | Kettle | `studio-flex.png` | `studio-flex-side.png` | `studio-flex-top.png` |
-| Metro Slide | Kettle | `metro-slide.png` | `metro-slide-side.png` | `metro-slide-top.png` |
-| Pace Setter 2 | Hballo | `pace-setter.png` | `pace-setter-side.png` | `pace-setter-top.png` |
-| Canvas Low | Vellum | `canvas-low.png` | `canvas-low-side.png` | `canvas-low-top.png` |
-| Glacier Boot | Summit | `glacier-boot.png` | `glacier-boot-side.png` | `glacier-boot-top.png` |
-| River Sandal | Summit | `river-sandal.png` | `river-sandal-side.png` | `river-sandal-top.png` |
+Source masters (and the unused alternates / editorial scene shots used by the
+home Campaign + Lookbook) live in `../campaign/`.
 
 ## Format
-
-- **PNG with transparent background** (alpha) preferred, or a flat `#F1F1F1`
-  seamless that's been background-removed.
+- **PNG, transparent background (RGBA)** — shoe floats on the dark card.
 - Square-ish framing, shoe centered with margin, soft contact shadow.
-- Keep them reasonably sized (~1200–2000px, < ~1.5 MB each is plenty).
+- ~1200–2000px, keep under ~1.5 MB each.
+- Optional `<slug>-side.png` / `<slug>-top.png` light up the PDP gallery.

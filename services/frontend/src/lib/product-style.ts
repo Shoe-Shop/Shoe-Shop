@@ -3,18 +3,18 @@
 // real PNGs land and stays coherent after. Unknown SKUs fall back to a stable
 // hash so an expanded catalogue still gets distinct, deterministic accents.
 const ACCENTS: Record<string, [from: string, to: string]> = {
-  "sku-aurora-runner": ["#ff6b6b", "#ff9e7d"],
-  "sku-trail-breaker": ["#a3e635", "#475569"],
-  "sku-court-classic": ["#c8b6a6", "#8d6e63"],
-  "sku-cloud-walker": ["#b8c0cc", "#8a94a6"],
-  "sku-tempo-racer": ["#ff6a00", "#1a1a1a"],
-  "sku-summit-hiker": ["#2a9d8f", "#6b4f3a"],
-  "sku-studio-flex": ["#ffe100", "#2b2b2b"],
-  "sku-metro-slide": ["#5a5a5a", "#9e9e9e"],
-  "sku-pace-setter": ["#2563eb", "#60a5fa"],
-  "sku-canvas-low": ["#d8c9a8", "#b49a6b"],
-  "sku-glacier-boot": ["#1e3a8a", "#7dd3fc"],
-  "sku-river-sandal": ["#6b8e23", "#a3b86c"],
+  "sku-aurora-runner": ["#ff7a18", "#ffce8a"], // Solaris Max — orange
+  "sku-trail-breaker": ["#9aa83a", "#cdd98a"], // Terra Trail — olive/lime
+  "sku-court-classic": ["#2563eb", "#7aa2ff"], // Court Apex — cobalt
+  "sku-cloud-walker": ["#e23744", "#ff8f8f"], // Ember Knit — red
+  "sku-tempo-racer": ["#ff2e2e", "#1a1a1a"], // Tempo Racer — red/black
+  "sku-summit-hiker": ["#6b6b6b", "#b4b4b4"], // Shadow Runner — graphite
+  "sku-studio-flex": ["#ff7a18", "#1a1a1a"], // Vortex Mid — orange/black
+  "sku-metro-slide": ["#5a5a5a", "#1a1a1a"], // Vampire Noir — all-black
+  "sku-pace-setter": ["#ff8a3d", "#e8e8ec"], // Flux Pace — white/orange
+  "sku-canvas-low": ["#d12f3a", "#c8ccd4"], // Phantom — crimson/silver
+  "sku-glacier-boot": ["#ff7a18", "#1a1a1a"], // Neurovibe MX — orange/black
+  "sku-river-sandal": ["#d7d9de", "#3a3a3a"], // Vampire — bone-white/charcoal
 };
 
 function hashHue(id: string): number {

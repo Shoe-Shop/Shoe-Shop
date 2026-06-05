@@ -7,8 +7,8 @@ import { useCart } from "@/components/cart/cart-provider";
 import { cn } from "@/lib/utils";
 
 const NAV = [
+  { label: "Home", href: "/" },
   { label: "Shop", href: "/shop" },
-  { label: "Collections", href: "/shop" },
   { label: "About", href: "/about" },
   { label: "Account", href: "/account" },
 ];

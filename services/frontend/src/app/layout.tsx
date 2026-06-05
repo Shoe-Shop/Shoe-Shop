@@ -36,8 +36,10 @@ export const metadata: Metadata = {
 };
 
 // Apply the persisted skin before first paint to avoid a flash. Defaults to
-// "kinetic" (matches the server render).
-const NO_FLASH_SKIN = `(function(){try{var s=localStorage.getItem("nexus-skin");if(s){document.documentElement.dataset.skin=s;}}catch(e){}})();`;
+// "brutalist" (the "Colorful" skin — matches the server render). Unknown/retired
+// values (e.g. the removed "cyber" skin) are migrated to the default so a stale
+// localStorage entry can't leave the app in an unstyled limbo state.
+const NO_FLASH_SKIN = `(function(){try{var ok=["kinetic","editorial","brutalist"];var s=localStorage.getItem("nexus-skin");if(s&&ok.indexOf(s)===-1){s="brutalist";localStorage.setItem("nexus-skin",s);}if(s){document.documentElement.dataset.skin=s;}}catch(e){}})();`;
 
 export default function RootLayout({
   children,
@@ -45,7 +47,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      data-skin="kinetic"
+      data-skin="brutalist"
       suppressHydrationWarning
       className={`${inter.variable} ${oswald.variable} ${fraunces.variable} ${jetbrains.variable} h-full`}
     >

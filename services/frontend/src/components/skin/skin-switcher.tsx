@@ -6,10 +6,9 @@ import { Palette, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const SKINS = [
-  { id: "kinetic", label: "Kinetic", note: "Sport-tech" },
-  { id: "cyber", label: "Cyber", note: "Neon-noir" },
-  { id: "editorial", label: "Editorial", note: "Minimal" },
-  { id: "brutalist", label: "Brutalist", note: "Luxe" },
+  { id: "kinetic", label: "Dark", note: "Sport-tech" },
+  { id: "editorial", label: "Light", note: "Minimal" },
+  { id: "brutalist", label: "Colorful", note: "Luxe" },
 ] as const;
 
 type SkinId = (typeof SKINS)[number]["id"];
@@ -21,7 +20,7 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
  * a direction is chosen this whole control comes out and the skin is fixed.
  */
 export function SkinSwitcher() {
-  const [skin, setSkin] = useState<SkinId>("kinetic");
+  const [skin, setSkin] = useState<SkinId>("brutalist");
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
