@@ -1,0 +1,105 @@
+# Shoe Shop — CHECKOUT overlay (the v0.3 NATS JetStream write path).
+# Used as:  compose.yaml + compose.core.yaml + compose.checkout.yaml   (task up:checkout)
+# Folded into full / lean-jvm too, so "all real services" still holds.
+#
+# Why a dedicated overlay (ADR-0003 profile decision): the write path is
+# JVM-heavy (Orders + the OTel Java agent). Keeping it opt-in leaves the daily
+# `task up:core` byte-for-byte unchanged (~0.9 GB), while one `task up:checkout`
+# brings up the read path + the real write path for end-to-end checkout traces.
+# Payment + Notification join this file as they become real. The Orders entry
+# OVERRIDES the core `traefik/whoami` stub with the real build.
+
+services:
+  # ── Orders — Java 21 · Spring Boot (gRPC front door + NATS saga) ──
+  # The checkout saga orchestrator (ADR-0003). Sync CreateOrder/GetOrder over
+  # gRPC; drives inventory.reserve → payment.authorize → orders.confirmed (with
+  # compensation) asynchronously over JetStream. Born MELT-complete via the
+  # OpenTelemetry Java agent (-javaagent); only NATS trace propagation is
+  # hand-wired. Build context is the repo root so proto/orders/v1 is in scope.
+  orders:
+    build:
+      context: ../../
+      dockerfile: services/orders/Dockerfile
+    image: shoeshop/orders:dev
+    restart: "no"
+    networks: [shoeshop]
+    container_name: shoeshop-orders
+    environment:
+      OTEL_SERVICE_NAME: orders
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      # Emit all four signals over OTLP; native trace_id metric exemplars.
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_METRICS_EXEMPLAR_FILTER: trace_based
+      # The agent also auto-instruments jnats; disable it so the saga's NATS spans
+      # are exactly our hand-wired Go-mirrored spine (consume/publish <subject>,
+      # scope shoeshop/orders) — one consume/publish span per hop, consistent with
+      # Inventory's reference, instead of duplicate "<subject> process" spans. Our
+      # traceparent inject/extract handles propagation independently of the agent.
+      OTEL_INSTRUMENTATION_NATS_ENABLED: "false"
+      # Resource parity (§9): drop the agent's host.*/process.*/os.*/container.*
+      # resource providers so Orders' label set matches the Go/Python/JS services
+      # (service.name/namespace, deployment.environment, telemetry.sdk.*).
+      OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS: >-
+        io.opentelemetry.instrumentation.resources.ProcessResourceProvider,io.opentelemetry.instrumentation.resources.ProcessRuntimeResourceProvider,io.opentelemetry.instrumentation.resources.HostResourceProvider,io.opentelemetry.instrumentation.resources.HostIdResourceProvider,io.opentelemetry.instrumentation.resources.OsResourceProvider,io.opentelemetry.instrumentation.resources.ContainerResourceProvider,io.opentelemetry.instrumentation.resources.ManifestResourceProvider
+      # App config (application.yml binds these).
+      ORDERS_GRPC_PORT: "9090"
+      ORDERS_DATABASE_URL: "jdbc:postgresql://postgres:5432/orders"
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      NATS_URL: "nats://nats:4222"
+      # Scale the JVM heap to the container limit (agent + Spring Boot headroom).
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60"
+    ports:
+      - "${ORDERS_PORT:-9004}:9090"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      otel-lgtm: { condition: service_started }
+    healthcheck:
+      # Plain TCP probe (no instrumented RPC → no telemetry noise). eclipse-temurin
+      # JRE ships bash; /dev/tcp succeeds once the gRPC port is listening.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9090"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    mem_limit: 512m
+
+  # ── Inventory — Go · gRPC (Postgres + NATS) ──────────────────────
+  # Real service (v0.3, MELT-complete). gRPC stock read path + the inventory side
+  # of the checkout saga over NATS JetStream (reserve/release → reserved/rejected).
+  # Lives here (with the rest of the write path) rather than in `full`. Build
+  # context is the repo root so the generated proto module is in scope.
+  inventory:
+    build:
+      context: ../../
+      dockerfile: services/inventory/Dockerfile
+    image: shoeshop/inventory:dev
+    restart: "no"
+    networks: [shoeshop]
+    container_name: shoeshop-inventory
+    environment:
+      OTEL_SERVICE_NAME: inventory
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      INVENTORY_GRPC_ADDR: ":9090"
+      INVENTORY_DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/inventory?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+    ports:
+      - "${INVENTORY_PORT:-9008}:9090"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      otel-lgtm: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "/grpc-health-probe", "-addr=127.0.0.1:9090"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 128m

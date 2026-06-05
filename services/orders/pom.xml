@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    Orders — the checkout saga orchestrator (ADR-0003). Spring Boot 3 + plain
+    grpc-java (the OpenTelemetry Java agent instruments grpc/jdbc/logback for the
+    four MELT signals; only NATS trace propagation is hand-wired). Built entirely
+    in Docker (no local JVM/Maven) — the Maven build is the version/API ground
+    truth, per the repo's "no hallucination" rule.
+  -->
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.4.1</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.shoeshop</groupId>
+  <artifactId>orders</artifactId>
+  <version>0.3.0</version>
+  <name>orders</name>
+  <description>Shoe Shop Orders — checkout saga orchestrator</description>
+
+  <properties>
+    <java.version>21</java.version>
+    <grpc.version>1.68.1</grpc.version>
+    <!-- Override Spring Boot's managed protobuf-java to the version grpc 1.68 targets. -->
+    <protobuf-java.version>4.28.2</protobuf-java.version>
+    <jnats.version>2.20.4</jnats.version>
+    <opentelemetry.version>1.45.0</opentelemetry.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Force protobuf-java to the version grpc 1.68 + protoc 4.28 generate
+           against. A direct entry here overrides both Spring Boot's inherited
+           management (which pins an older 3.x) and the imported grpc-bom. -->
+      <dependency>
+        <groupId>com.google.protobuf</groupId>
+        <artifactId>protobuf-java</artifactId>
+        <version>${protobuf-java.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.grpc</groupId>
+        <artifactId>grpc-bom</artifactId>
+        <version>${grpc.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-bom</artifactId>
+        <version>${opentelemetry.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Core Spring (no web server; this is a gRPC + NATS worker). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+    <!-- JdbcClient (Spring 6.1+) over a connection pool — lightweight, explicit
+         SQL, no Hibernate (low memory, predictable behaviour for the corpus). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <!-- Jackson + an autoconfigured ObjectMapper for the JSON saga envelopes
+         (plain spring-boot-starter omits Jackson; this is a non-web app). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-json</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- gRPC (server). The OTel Java agent instruments grpc-netty automatically. -->
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-netty-shaded</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-protobuf</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-stub</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-services</artifactId>
+    </dependency>
+    <!-- grpc-java generated stubs reference javax.annotation.Generated. -->
+    <dependency>
+      <groupId>org.apache.tomcat</groupId>
+      <artifactId>annotations-api</artifactId>
+      <version>6.0.53</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- NATS JetStream client (async saga transport). -->
+    <dependency>
+      <groupId>io.nats</groupId>
+      <artifactId>jnats</artifactId>
+      <version>${jnats.version}</version>
+    </dependency>
+
+    <!-- OTel API: hand-wired NATS traceparent propagation + domain events.
+         The SDK is supplied at runtime by the -javaagent; we only use the API. -->
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-api</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <extensions>
+      <!-- Provides ${os.detected.classifier} for the protoc/grpc plugin binaries. -->
+      <extension>
+        <groupId>kr.motd.maven</groupId>
+        <artifactId>os-maven-plugin</artifactId>
+        <version>1.7.1</version>
+      </extension>
+    </extensions>
+    <plugins>
+      <!-- Compile proto/orders/v1 (copied into src/main/proto by the Dockerfile)
+           to Java message + gRPC stubs. -->
+      <plugin>
+        <groupId>org.xolstice.maven.plugins</groupId>
+        <artifactId>protobuf-maven-plugin</artifactId>
+        <version>0.6.1</version>
+        <configuration>
+          <protocArtifact>com.google.protobuf:protoc:${protobuf-java.version}:exe:${os.detected.classifier}</protocArtifact>
+          <pluginId>grpc-java</pluginId>
+          <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>compile</goal>
+              <goal>compile-custom</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

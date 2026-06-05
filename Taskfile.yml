@@ -5,8 +5,9 @@
 #   • Full compose →  `task up:*`    (everything containerized)
 #
 # Profiles (RAM dial):
-#   core      = 6 services  (frontend, bff, catalogue, cart, orders, payment)
-#   full      = all 11 + Zitadel auth
+#   core      = read-path services (frontend, bff, catalogue, cart, users)
+#   checkout  = core + the v0.3 write path (real Orders + Inventory over NATS)
+#   full      = all 11 + Zitadel auth (folds in checkout)
 #   lean-jvm  = full, but Orders/Shipping heaps capped for the tightest budget
 #
 # Prereqs: Docker Desktop (WSL2), the `task` CLI. Run `task doctor` to verify.
@@ -18,6 +19,7 @@ vars:
   ENVFILE: --env-file deploy/compose/.env
   BASE: -f deploy/compose/compose.yaml
   CORE: -f deploy/compose/compose.core.yaml
+  CHECKOUT: -f deploy/compose/compose.checkout.yaml
   FULL: -f deploy/compose/compose.full.yaml
   LEANJVM: -f deploy/compose/compose.lean-jvm.yaml
   PYRO: -f deploy/compose/compose.pyroscope.yaml
@@ -55,7 +57,7 @@ tasks:
     desc: "Validate & render the merged Compose config (full profile)"
     deps: [_ensure-env]
     cmds:
-      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.FULL}} config
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} config
 
   # ── Bring-up ───────────────────────────────────────────────────────
   dev:
@@ -83,18 +85,25 @@ tasks:
       - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} up -d --remove-orphans
       - task: obs
 
+  up:checkout:
+    desc: "Start platform + read path + the v0.3 write path (real Orders + Inventory)"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.CHECKOUT}} up -d --remove-orphans
+      - task: obs
+
   up:full:
     desc: "Start platform + ALL 11 services + Zitadel auth"
     deps: [_ensure-env]
     cmds:
-      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.FULL}} up -d --remove-orphans
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} up -d --remove-orphans
       - task: obs
 
   up:lean-jvm:
     desc: "Like up:full but with Orders/Shipping JVM heaps capped (tightest RAM)"
     deps: [_ensure-env]
     cmds:
-      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.FULL}} {{.LEANJVM}} up -d --remove-orphans
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} {{.LEANJVM}} up -d --remove-orphans
       - task: obs
 
   # ── Opt-in continuous profiling ────────────────────────────────────
@@ -114,23 +123,23 @@ tasks:
   ps:
     desc: "Show status of all Shoe Shop containers"
     cmds:
-      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} ps
+      - docker compose {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} ps
 
   logs:
     desc: "Tail logs. Optionally a service: task logs -- catalogue"
     cmds:
-      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} logs -f --tail=100 {{.CLI_ARGS}}
+      - docker compose {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} logs -f --tail=100 {{.CLI_ARGS}}
 
   restart:
     desc: "Restart service(s): task restart -- catalogue"
     cmds:
-      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} restart {{.CLI_ARGS}}
+      - docker compose {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} restart {{.CLI_ARGS}}
 
   pull:
     desc: "Pre-pull all container images"
     deps: [_ensure-env]
     cmds:
-      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.FULL}} {{.PYRO}} pull
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} {{.PYRO}} pull
 
   obs:
     desc: "Print observability + service endpoints"
@@ -157,10 +166,10 @@ tasks:
   down:
     desc: "Stop and remove containers (keeps data volumes)"
     cmds:
-      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} {{.PYRO}} down --remove-orphans
+      - docker compose {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} {{.PYRO}} down --remove-orphans
 
   nuke:
     desc: "Stop everything AND delete data volumes. Destructive."
     prompt: "This deletes all local data volumes (Postgres, Meili, NATS). Continue?"
     cmds:
-      - docker compose {{.BASE}} {{.CORE}} {{.FULL}} {{.PYRO}} down -v --remove-orphans
+      - docker compose {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.FULL}} {{.PYRO}} down -v --remove-orphans

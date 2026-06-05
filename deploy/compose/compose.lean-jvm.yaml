@@ -1,14 +1,15 @@
 # Shoe Shop — LEAN-JVM overlay.
-# Used as: compose.yaml + compose.core.yaml + compose.full.yaml + compose.lean-jvm.yaml
+# Used as: compose.yaml + .core.yaml + .checkout.yaml + .full.yaml + .lean-jvm.yaml
 # Squeezes the two JVM services (Orders, Shipping) for the tightest RAM budget.
-# JAVA_TOOL_OPTIONS is honored by the real Spring Boot / Ktor images; the
-# current whoami stubs simply ignore it.
+# Orders is real (Spring Boot + the OpenTelemetry Java agent), so it needs room
+# for heap + metaspace + the agent; MaxRAMPercentage scales the heap to the cap.
+# Shipping is still a whoami stub and simply ignores JAVA_TOOL_OPTIONS.
 
 services:
   orders:
     environment:
-      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxRAMPercentage=75"
-    mem_limit: 256m
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60"
+    mem_limit: 384m
 
   shipping:
     environment:

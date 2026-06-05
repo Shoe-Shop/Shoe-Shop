@@ -4,6 +4,7 @@ import { Hono, type Context } from 'hono';
 import { catalogue, grpc } from './catalogue-client';
 import { cart } from './cart-client';
 import { users } from './users-client';
+import { orders, type OrderItem } from './orders-client';
 import { log, event } from './telemetry';
 
 export const app = new Hono();
@@ -128,6 +129,59 @@ app.get('/api/users/:id', async (c) => {
   try {
     const res = await users.getUser({ id: c.req.param('id') });
     event('bff.user.viewed', { 'user.id': c.req.param('id'), lookup: 'id' });
+    return c.json(res);
+  } catch (e) {
+    return grpcError(c, e);
+  }
+});
+
+// ── Checkout / orders ────────────────────────────────────────────────
+// The synchronous front door to the checkout saga (ADR-0003 §1). The BFF
+// assembles the order from the cart (line quantities) enriched with catalogue
+// prices, then calls Orders.CreateOrder, which persists PENDING and drives the
+// async saga (orders -> inventory -> payment over NATS) under the same trace_id.
+
+app.post('/api/checkout/:userId', async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const { cart: basket } = await cart.getCart({ userId });
+    const lines = basket?.items ?? [];
+    if (lines.length === 0) {
+      log.warn('checkout with empty cart', { 'user.id': userId });
+      return c.json({ error: 'cart is empty' }, 400);
+    }
+
+    // Enrich each line with the current catalogue price (Orders sums the total).
+    const items: OrderItem[] = [];
+    let currency = 'USD';
+    for (const line of lines) {
+      const { product } = await catalogue.getProduct({ id: line.productId });
+      currency = product.currency || currency;
+      items.push({
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPriceCents: product.priceCents,
+      });
+    }
+
+    const res = await orders.createOrder({ userId, items, currency });
+    event('bff.checkout.started', {
+      'user.id': userId,
+      'order.id': res.order?.id,
+      'order.status': res.order?.status,
+      'order.total_cents': res.order?.totalCents,
+      'order.items': items.length,
+    });
+    return c.json(res, 201);
+  } catch (e) {
+    return grpcError(c, e);
+  }
+});
+
+app.get('/api/orders/:id', async (c) => {
+  try {
+    const res = await orders.getOrder({ orderId: c.req.param('id') });
+    event('bff.order.viewed', { 'order.id': c.req.param('id'), 'order.status': res.order?.status });
     return c.json(res);
   } catch (e) {
     return grpcError(c, e);

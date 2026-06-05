@@ -1,8 +1,8 @@
 # Shoe Shop — CORE profile overlay (merged on top of compose.yaml).
-# The 7 services for the default daily profile: the end-to-end checkout-trace
-# path (frontend, bff, catalogue, cart, orders, payment) plus Users — the four
-# real MELT-complete services (catalogue, cart, bff, users) all live here so
-# they validate together on the default profile.
+# The default daily profile: the MELT-complete READ path — frontend, bff,
+# catalogue, cart, users (all real) — plus the Payment stub. The v0.3 WRITE path
+# (real Orders + Inventory over NATS) is the opt-in checkout overlay
+# (compose.checkout.yaml, `task up:checkout`), so core stays lean (~0.9 GB).
 #
 # Each service currently runs a `traefik/whoami` STUB so the topology, ports,
 # memory limits, and dependency graph are real and runnable today. When a
@@ -80,6 +80,9 @@ services:
       CATALOGUE_ADDR: "catalogue:9090"
       CART_ADDR: "cart:9090"
       USERS_ADDR: "users:9090"
+      # Orders is real only under the checkout overlay; the client connects lazily,
+      # so this default is harmless on plain `core` (checkout routes return 503 then).
+      ORDERS_ADDR: "orders:9090"
     ports:
       - "${BFF_PORT:-9001}:8080"
     depends_on:
@@ -203,22 +206,9 @@ services:
     mem_limit: 256m
 
   # ── Orders — Java 21 · Spring Boot (Postgres + NATS) ─────────────
-  orders:
-    <<: *stub
-    # build: { context: ../../services/orders }
-    container_name: shoeshop-orders
-    environment:
-      OTEL_SERVICE_NAME: orders
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
-      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
-      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
-    ports:
-      - "${ORDERS_PORT:-9004}:80"
-    depends_on:
-      postgres: { condition: service_started }
-      nats: { condition: service_started }
-      otel-lgtm: { condition: service_started }
-    mem_limit: 384m
+  # The real Orders service is the v0.3 checkout-saga orchestrator and lives in
+  # the checkout overlay (compose.checkout.yaml) with the rest of the write path,
+  # not as a stub here. `task up:checkout` / `up:full` bring it up.
 
   # ── Payment — Rust · Axum (Postgres) ─────────────────────────────
   payment:

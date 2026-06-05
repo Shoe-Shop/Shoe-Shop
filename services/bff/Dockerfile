@@ -27,9 +27,11 @@ COPY --from=build /app/dist ./dist
 COPY proto/catalogue ./proto/catalogue
 COPY proto/cart ./proto/cart
 COPY proto/users ./proto/users
+COPY proto/orders ./proto/orders
 ENV CATALOGUE_PROTO=/app/proto/catalogue/v1/catalogue.proto
 ENV CART_PROTO=/app/proto/cart/v1/cart.proto
 ENV USERS_PROTO=/app/proto/users/v1/users.proto
+ENV ORDERS_PROTO=/app/proto/orders/v1/orders.proto
 EXPOSE 8080
 # distroless nodejs entrypoint is `node`; these are its args.
 CMD ["-r", "./dist/telemetry.js", "./dist/index.js"]

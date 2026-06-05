@@ -1,0 +1,33 @@
+# Orders service configuration. Values come from the environment (Compose),
+# with local-compose defaults so the service is runnable as-is.
+spring:
+  application:
+    name: orders
+  # No embedded web server — Orders is a gRPC front door + NATS saga worker.
+  main:
+    web-application-type: none
+  datasource:
+    url: ${ORDERS_DATABASE_URL:jdbc:postgresql://postgres:5432/orders}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:postgres}
+    hikari:
+      maximum-pool-size: 8
+      pool-name: orders-pool
+  sql:
+    init:
+      # Apply schema.sql idempotently on every startup (CREATE TABLE IF NOT EXISTS),
+      # mirroring the Go services' startup migrate.
+      mode: always
+
+# Service-specific configuration (bound by OrdersProperties).
+orders:
+  grpc:
+    port: ${ORDERS_GRPC_PORT:9090}
+  nats:
+    url: ${NATS_URL:nats://nats:4222}
+
+# Quiet Spring's own banner/startup noise in container logs; the OTel agent
+# ships logs to Loki with trace_id/span_id.
+logging:
+  level:
+    root: INFO

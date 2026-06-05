@@ -6,24 +6,38 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-04 (**Inventory (Go) shipped MELT-complete — the v0.3 NATS
-> JetStream write path has begun; 6 of 11 services MELT-complete**. Inventory serves
-> a sync gRPC stock-availability read path (GetStock/BatchGetStock, Postgres+sqlc)
-> AND runs the inventory side of the checkout saga asynchronously over NATS JetStream
+> _Last updated: 2026-06-05 (**Orders (Java/Spring) shipped MELT-complete — the v0.3
+> checkout saga is live; 7 of 11 services MELT-complete**, 2 of 4 write-path services
+> done). Orders is the **saga orchestrator** (ADR-0003): a sync gRPC front door
+> (`CreateOrder`/`GetOrder`; persists PENDING, returns immediately) that drives the
+> fulfilment saga asynchronously over NATS JetStream — owns the `ORDERS` stream,
+> publishes `inventory.reserve`/`payment.authorize`, consumes the
+> `inventory.reserved/rejected` + `payment.authorized/declined` replies, and runs an
+> explicit state machine PENDING→RESERVING→AUTHORIZING→CONFIRMED with compensation to
+> CANCELLED (conditional `UPDATE … WHERE status` as the atomic dedup guard). It is the
+> first **Java** stack and the first instrumented by the **OpenTelemetry Java agent**
+> (`-javaagent` 2.28.1, the idiomatic Java path) rather than a hand-wired SDK — only
+> NATS trace propagation is hand-wired, mirroring Inventory's Go spine. **Verified
+> live:** a real checkout (BFF `POST /api/checkout/:userId` → `Orders.CreateOrder`)
+> produced **one 33-span Tempo trace** `frontend/bff → orders → (NATS) → inventory →
+> (NATS) → orders` (the saga is ONE correlated trace across both async hops); the
+> agent emits RED `rpc_server_duration_milliseconds_*{service_name="orders"}` with
+> **native Java trace_id exemplars** (no JS gap), and the same saga trace_id stamps
+> the orders logs + events (`orders.placed/reserved`, scope `shoeshop/orders`) in
+> Loki — M→T→L/E all on one id. The happy path reached CONFIRMED (payment simulated
+> via `nats-box`), an oversell reached CANCELLED via `inventory.rejected`. **Profile
+> decision resolved:** the JVM-heavy write path is an opt-in `checkout` overlay
+> (`task up:checkout`, real Orders + Inventory) so `core` stays lean; `full`/`lean-jvm`
+> fold it in. See ADR-0003 + §9 "Orders MELT implementation". All Java versions/APIs
+> were verified by building in Docker. Build/verify caveat: Docker Desktop crashed
+> once mid-verification (WSL2 memory) and was restarted — no code impact.
+> Previously: **Inventory (Go) shipped MELT-complete** — the first v0.3 write-path
+> service: a sync gRPC stock-availability read path (GetStock/BatchGetStock,
+> Postgres+sqlc) AND the inventory side of the checkout saga over NATS JetStream
 > (consumes `inventory.reserve`/`inventory.release`, publishes
-> `inventory.reserved`/`inventory.rejected` for the Orders orchestrator — ADR-0003).
-> The new cross-cutting pattern, verified live: **W3C `traceparent` is propagated
-> through NATS message headers**, so an async saga step is ONE correlated trace —
-> a published `inventory.reserve` (with a `traceparent` header) produced a single
-> Tempo trace `consume inventory.reserve` (CONSUMER span, child of the remote header
-> span) → otelpgx `BEGIN / ReserveStock×2 / COMMIT` tx spans → `publish
-> inventory.reserved` (PRODUCER span); the same trace_id stamped its Loki logs +
-> domain events; RED (`rpc_server_*{service_name="inventory"}`, incl. a `NotFound`
-> error) carries **native Go trace_id exemplars** (no JS exemplar gap — this is Go).
-> Insufficient stock on the scarce SKU produced `inventory.rejected`. See ADR-0003,
-> §4/§9 (new "Inventory MELT implementation" + NATS-propagation subsections). Inventory
-> currently runs in the `full` profile (the checkout-set profile placement is a pending
-> ADR-0003 decision); brought up explicitly as backbone + inventory for verification.
+> `inventory.reserved`/`inventory.rejected`). It established the **W3C `traceparent`
+> in NATS message headers** propagation pattern (CONSUMER span child of the remote
+> producer; otelpgx tx spans; native Go trace_id exemplars) that Orders mirrors.
 > Previously: **Frontend MELT-complete — verified correlated live in
 > Grafana; 5 of 11 services MELT-complete**. Two build bugs in the wired
 > instrumentation were fixed first: `useReportWebVitals` is imported from
@@ -99,37 +113,40 @@ This is the most important section — do not assume more is built than is liste
 | **Users** (Python 3.12, FastAPI + gRPC, Postgres, OTel) | ✅ **Done & validated** (v0.2) — multi-span `gRPC RPC → Postgres query` traces in Tempo |
 | **Frontend** (Next.js 15 App Router, NEXUS storefront) | ✅ **Done & MELT-complete** (v0.2-MELT) — home · shop (search + filter + sort) · PDP · cart · account; live BFF calls; four signals **verified correlated** in Grafana (RED + Web Vitals histograms, trace_id-stamped logs/events, frontend→bff→catalogue traces, spanmetrics exemplars) |
 | **Inventory** (Go, gRPC + NATS JetStream, Postgres+sqlc, OTel) | ✅ **Done & MELT-complete** (v0.3) — sync stock read path + async checkout-saga reserve/release; four signals **verified correlated**, incl. trace propagated across NATS |
-| orders, payment | 🟡 **Stubs** (`traefik/whoami`) — real ports/limits/deps, no logic |
+| **Orders** (Java 21 · Spring Boot · gRPC + NATS JetStream, Postgres) | ✅ **Done & MELT-complete** (v0.3) — sync CreateOrder/GetOrder + the checkout-saga orchestrator (reserve → authorize → confirm, with compensation); four signals **verified correlated**, saga is one trace across NATS |
+| payment | 🟡 **Stub** (`traefik/whoami`) — real ports/limits/deps, no logic |
 | shipping, recommendation, notification | 🟡 **Stubs** (full profile) |
 | Zitadel auth | 🟡 Wired in `full` profile, not yet integrated |
 | Incident / chaos framework | 🔴 **Planned** (see §11) |
 | k3d / Helm / Argo CD / Istio paths | 🔴 **Planned / documented only** |
 
 **Rule of thumb:** Catalogue, the BFF, Cart, Users, the **Frontend**, **Inventory**,
-+ the 5 infra containers contain real behaviour. The **Frontend** (NEXUS, Next.js 15)
-calls the BFF live for catalogue, search and cart. **Inventory** (Go) is the first
-v0.3 write-path service: it serves stock availability over gRPC and runs the
-inventory side of the checkout saga over NATS JetStream. Orders, payment, shipping,
+**Orders**, + the 5 infra containers contain real behaviour. The **Frontend** (NEXUS,
+Next.js 15) calls the BFF live for catalogue, search, cart and checkout. **Inventory**
+(Go) and **Orders** (Java) are the v0.3 write-path services: Orders is the checkout-saga
+orchestrator (sync `CreateOrder`/`GetOrder` over gRPC, then the async saga over NATS
+JetStream), and Inventory runs the inventory side of that saga. Payment, shipping,
 recommendation and notification remain `traefik/whoami` placeholders. The five
-read-path real services live in the **`core` profile** (`task up:core` brings up the
-MELT-complete read set together); **Inventory currently lives in `full`** — the
-profile placement for the v0.3 checkout set is a pending ADR-0003 decision — and is
-brought up explicitly (backbone + inventory) for now.
+read-path real services live in the **`core` profile** (`task up:core`); the v0.3
+**write path (Orders + Inventory) is the opt-in `checkout` overlay** — `task up:checkout`
+brings up the read path + the real write path for end-to-end checkout traces, keeping
+`core` lean (ADR-0003 profile decision). `full`/`lean-jvm` fold in the checkout overlay.
 
-> **✅ Telemetry reality (retrofit complete; v0.3 write path begun — born MELT-complete).**
-> **Six real services — Catalogue (Go), Users (Python), Cart (Node), BFF (TS), the
-> Frontend (Next.js 15) and now Inventory (Go) — are MELT-complete:** Metrics +
-> Events + Logs + Traces emitted and **verified correlated** in the LGTM bundle (§9).
-> Per ADR-0002 the golden standard is **four correlated signals (MELT)**, so **6 of 11
-> services are MELT-complete** (the other 5 are `traefik/whoami` stubs that emit
-> nothing real). The v0.2-MELT retrofit is done and the five read-path services come
-> up together on the default `core` profile; **Inventory is the first v0.3 write-path
-> service, born MELT-complete** (ADR-0003) and proving the new NATS+OTel
-> trace-propagation pattern. Coverage is tracked in the matrix in §9. (The three
-> JS/TS services — Cart, BFF, Frontend — carry the documented JS-stack exemplar
-> caveat: their metric↔trace exemplars come from the bundle's Tempo metrics-generator,
-> not the OTel-JS SDK. The two Go services, Catalogue and Inventory, emit metric
-> exemplars natively — see the §9 Per-stack exemplar policy.)
+> **✅ Telemetry reality (retrofit complete; v0.3 write path in progress — born MELT-complete).**
+> **Seven real services — Catalogue (Go), Users (Python), Cart (Node), BFF (TS), the
+> Frontend (Next.js 15), Inventory (Go) and now Orders (Java/Spring) — are
+> MELT-complete:** Metrics + Events + Logs + Traces emitted and **verified correlated**
+> in the LGTM bundle (§9). Per ADR-0002 the golden standard is **four correlated
+> signals (MELT)**, so **7 of 11 services are MELT-complete** (the other 4 are
+> `traefik/whoami` stubs that emit nothing real). The v0.2-MELT retrofit is done and
+> the five read-path services come up together on the default `core` profile; the v0.3
+> write path — **Inventory (Go) then Orders (Java)** — adds the checkout saga, born
+> MELT-complete (ADR-0003), proving the NATS+OTel trace-propagation pattern in two
+> stacks. Coverage is tracked in the matrix in §9. (The three JS/TS services — Cart,
+> BFF, Frontend — carry the documented JS-stack exemplar caveat: their metric↔trace
+> exemplars come from the bundle's Tempo metrics-generator, not the OTel-JS SDK. The
+> two Go services **and Java/Orders** emit metric exemplars natively — see the §9
+> Per-stack exemplar policy.)
 
 ---
 
@@ -156,7 +173,7 @@ OTel Collector) on port 3000 / OTLP 4317-4318. Pyroscope is an opt-in sidecar.
 | 2 | **bff** | TypeScript · Hono | gRPC client → catalogue · cart · users | — | **real** (MELT-complete) |
 | 3 | **catalogue** | **Go 1.25 · gRPC + sqlc** | gRPC | Postgres + Meilisearch | **real** |
 | 4 | **cart** | Node.js · gRPC | gRPC | Redis | **real** |
-| 5 | orders | Java 21 · Spring Boot | gRPC | Postgres + NATS | stub |
+| 5 | **orders** | **Java 21 · Spring Boot** | gRPC | Postgres + NATS | **real** (MELT-complete) |
 | 6 | payment | Rust · Axum | gRPC | Postgres | stub |
 | 7 | **users** | **Python 3.12 · FastAPI + gRPC** | gRPC | Postgres | **real** |
 | 8 | shipping | Kotlin · Ktor | gRPC | Postgres + NATS | stub |
@@ -174,8 +191,9 @@ Taskfile.yml                  # dual-path task runner (go-task)
 ARCHITECTURE.md               # this file
 README.md                     # public pitch / blueprint
 deploy/compose/               # compose.yaml (backbone) + profile overlays
-  ├── compose.core.yaml       # 6 core services (catalogue is REAL)
-  ├── compose.full.yaml       # +5 services +zitadel
+  ├── compose.core.yaml       # read-path services (all REAL) + payment stub
+  ├── compose.checkout.yaml   # v0.3 write path: REAL orders (Java) + inventory (Go)
+  ├── compose.full.yaml       # +remaining stubs +zitadel
   ├── compose.lean-jvm.yaml   # JVM heap caps
   ├── compose.pyroscope.yaml  # opt-in profiling
   ├── .env.example            # tags/creds/ports (committed); .env is gitignored
@@ -192,6 +210,7 @@ services/cart/                # Cart (Node/TS)
 services/users/               # Users (Python · FastAPI + gRPC)
 services/frontend/            # NEXUS storefront (Next.js 15)
 services/inventory/           # Inventory (Go · gRPC read + NATS saga) — v0.3
+services/orders/              # Orders (Java · Spring Boot · gRPC + NATS saga) — v0.3
 ```
 
 ---
@@ -373,6 +392,7 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 | bff | TS | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, same JS gap as Cart) |
 | frontend | TS · Next.js 15 | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, same JS gap as Cart/BFF) |
 | inventory | Go | ✅ | ✅ | ✅ | ✅ | ✅ (v0.3 write-path — verified correlated; **native** Go exemplars, no JS gap; trace propagated across NATS) |
+| orders | Java · Spring Boot | ✅‡ | ✅ | ✅ | ✅ | ✅ (v0.3 saga orchestrator — verified correlated; **native** Java exemplars via the OTel agent, no JS gap; saga is ONE trace across NATS) |
 
 > ✅ emitted & validated · ⬜ not yet · update a cell only after verifying the
 > signal in Grafana, not on writing the code.
@@ -418,6 +438,20 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 > the `frontend.search.performed` event's `trace_id` in Loki — exemplar → trace →
 > log/event all on one id. Outgoing server-side `fetch → bff` calls emit CLIENT
 > spans that propagate `traceparent`, so Frontend trace roots are cross-service.
+>
+> **‡ Orders Metrics — the OTel Java agent emits RED natively (verified in Docker).**
+> Unlike the hand-wired Go/Python interceptors, Orders' RED comes from the
+> OpenTelemetry Java **agent's** gRPC instrumentation as
+> `rpc_server_duration_milliseconds_*{service_name="orders"}` (rate via `_count`,
+> errors via `rpc_grpc_status_code`, keyed by `rpc_method` ∈ {CreateOrder, GetOrder}).
+> Two documented divergences from the Go services, both inherent to the agent and
+> harmless to the dataset: the histogram unit is **milliseconds** (not seconds) and
+> `rpc_grpc_status_code` is the **numeric** code (`0` = OK). Crucially, **the OTel
+> Java SDK attaches metric exemplars natively** (verified live: a
+> `rpc_server_duration_milliseconds_bucket` exemplar carried the saga `trace_id`) —
+> so Orders, like the two Go services, has **no JS exemplar gap** and needs no
+> Tempo-metrics-generator workaround. The agent also emits rich `jvm_*`,
+> `db_client_*` (Hikari/JDBC) and `otlp_exporter_*` metrics for free.
 
 ### Current Traces implementation (the ✅ column above)
 
@@ -759,6 +793,78 @@ and adds **one new, reusable piece**: trace-context propagation over NATS.
 > (`jetstream` package), `google/uuid` v1.6.0; OTel core `v1.44.0` / log+sdk/log
 > `v0.20.0` / otelslog `v0.19.0` / otelgrpc `v0.69.0` (unchanged from Catalogue).
 
+### Orders MELT implementation (Java · Spring Boot · v0.3 saga orchestrator — verified correlated 2026-06-05)
+
+Orders is the **checkout-saga orchestrator** (ADR-0003) and the project's first
+**Java** stack. Unlike every other service (which hand-wires the OTel SDK), Orders
+is instrumented by the **OpenTelemetry Java agent** (`-javaagent`, v2.28.1) — the
+idiomatic Java path, decided with the user. The agent auto-instruments Spring,
+grpc-netty and JDBC; only the **NATS trace propagation is hand-wired**, mirroring
+Inventory's Go `telemetry/nats.go`. Code:
+[`services/orders/`](services/orders/) (Maven; `OrdersGrpcService`, `SagaOrchestrator`,
+`SagaConsumer`, `telemetry/NatsTracing` + `telemetry/Events`). All versions/APIs
+were **verified by building in Docker** (compiler as ground truth) — Spring Boot
+`3.4.1`, grpc-java `1.68.1`, protobuf `4.28.2`, `io.nats:jnats` `2.20.4`,
+opentelemetry-api `1.45.0`.
+
+- **Two surfaces.** A gRPC server (`CreateOrder`, `GetOrder`) is the **sync front
+  door**: CreateOrder persists a PENDING order (Postgres via Spring `JdbcClient`,
+  agent-instrumented JDBC spans) and returns immediately; the async **saga** runs
+  over JetStream — Orders owns the `ORDERS` stream and runs durable consumers on the
+  `INVENTORY`/`PAYMENT` reply streams.
+- **Saga state machine (the only saga authority).** PENDING → RESERVING →
+  AUTHORIZING → CONFIRMED, compensating to CANCELLED. Each step is a **conditional**
+  `UPDATE … WHERE status = :from` used as an atomic dedup guard, so duplicate/late
+  JetStream replies are safe no-ops (idempotency keyed on `order_id`). CreateOrder
+  publishes `orders.placed` + `inventory.reserve`; on `inventory.reserved` →
+  `payment.authorize`; on `payment.authorized` → CONFIRMED + `orders.confirmed`;
+  `inventory.rejected` short-circuits to CANCELLED (no payment), `payment.declined`
+  publishes `inventory.release` then CANCELLED. **Verified live:** the happy path
+  reached CONFIRMED and an oversell (scarce SKU) reached CANCELLED via
+  `inventory.rejected`.
+- **Metrics (M).** Agent-native RED + native exemplars — see the §9 matrix **‡**
+  note (`rpc_server_duration_milliseconds_*`, ms unit, numeric status; native
+  `trace_id` exemplars; plus `jvm_*`/`db_client_*`). **No JS exemplar gap** (Java,
+  like Go, emits them). Resource parity (§9) is kept by disabling the agent's
+  host/process/os/container resource providers via
+  `OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS`.
+- **Logs (L).** SLF4J/Logback → the agent's OpenTelemetry appender → OTLP → Loki,
+  with `trace_id`/`span_id` injected from the active span. App logs keep their
+  **logger-class scope** (`com.shoeshop.orders.…`) — the §9 documented exception for
+  bridged logs (parallel to Python's logger-name scope).
+- **Events (E).** Domain events via the **stable** OTel Logs API
+  (`telemetry/Events`): the event name is the record **body** + an `event.name`
+  attribute, scope **`shoeshop/orders`** — the same observable join as the other
+  services (`orders.placed`, `orders.reserved`, `orders.confirmed`, `orders.cancelled`).
+  *Per-stack note:* OTel-Java's formal OTLP `EventName` field is incubator-only
+  (verified absent from the stable `ExtendedLogRecordBuilder` in 1.45), so Java uses
+  body+attribute — identical join behaviour, no unstable API.
+- **NATS+OTel propagation (mirrors Inventory).** `telemetry/NatsTracing` adapts
+  `io.nats.client.impl.Headers` to an OTel `TextMap` carrier: inject the active
+  context on publish (PRODUCER span `publish <subject>`), extract + open a CONSUMER
+  span (`consume <subject>`) on receive — scope `shoeshop/orders`, matching the Go
+  reference. The agent *also* ships a jnats instrumentation
+  (`io.opentelemetry.nats-2.17`); it is **disabled** (`OTEL_INSTRUMENTATION_NATS_ENABLED=false`)
+  so the saga's NATS spans are exactly this hand-wired spine (no duplicate
+  `<subject> process` spans). Propagation is agent-independent (pure OTel-API).
+- **Correlation proven (live, in the LGTM bundle).** A single checkout produced
+  **one 33-span Tempo trace** `frontend/bff → bff→cart, bff→catalogue→postgres →
+  orders CreateOrder → (INSERT/UPDATE JDBC) → publish inventory.reserve →
+  **inventory** consume inventory.reserve → ReserveStock tx → publish
+  inventory.reserved → **orders** consume inventory.reserved → publish
+  payment.authorize`. The same saga `trace_id` was carried by the orders RED
+  exemplar **and** by the orders logs/events in Loki (`orders.placed`,
+  `orders.reserved` at scope `shoeshop/orders`) — M → T → L/E all on one id, across
+  two async NATS hops. (Payment is simulated via `nats-box` until the Rust service
+  exists, so the `payment.authorized` step starts its own trace, as designed.)
+
+> **Verified Java OTel + saga set** (built in Docker): OpenTelemetry Java **agent**
+> `2.28.1` (pinned) + opentelemetry-api `1.45.0`; Spring Boot `3.4.1` (Java 21);
+> grpc-java `1.68.1` (grpc-netty-shaded + protobuf `4.28.2`, xolstice
+> protobuf-maven-plugin `0.6.1`); `io.nats:jnats` `2.20.4`. The agent emits all four
+> signals over OTLP/gRPC from `OTEL_*` env alone; only `NatsTracing`/`Events` are
+> app code.
+
 ---
 
 ## 10. Incidents & reliability (direction)
@@ -825,14 +931,20 @@ unlabeled, unrecoverable telemetry.
   1. ✅ **Inventory (Go)** — gRPC stock read + saga reserve/release over NATS;
      established the **NATS+OTel trace-propagation pattern** (§9); MELT-complete,
      verified correlated live (saga is one trace across the async hop).
-  2. ⬜ **Orders (Java/Spring)** — the saga orchestrator + state machine (the
-     coordinator that publishes `inventory.reserve`/`payment.authorize` and reacts
-     to replies; owns `orders.placed/confirmed/cancelled`).
+  2. ✅ **Orders (Java/Spring)** — the saga orchestrator + state machine; sync
+     `CreateOrder`/`GetOrder` over gRPC, drives `inventory.reserve` →
+     `payment.authorize` → `orders.confirmed` (with compensation) over NATS; owns
+     the `ORDERS` stream. Born MELT-complete via the **OTel Java agent** (native
+     exemplars); BFF `POST /api/checkout/:userId` wired; verified correlated live
+     (saga is one trace across NATS). **7 of 11 MELT-complete.**
   3. ⬜ **Payment (Rust/Axum)** — deterministic payment simulator (reproducible
-     declines); Rust OTel verified last (least mature).
+     declines); Rust OTel verified last (least mature). Until it exists, the saga's
+     `payment.authorized/declined` is simulated via `nats-box`.
   4. ⬜ **Notification (Go)** — pure subscriber on terminal order events; fan-out.
-  Pending decision: profile placement for the checkout set (Inventory is in `full`
-  today). BFF → Inventory/Orders wiring lands as Orders arrives.
+  **Profile decision (resolved, ADR-0003):** the JVM-heavy write path is an opt-in
+  `checkout` overlay (`task up:checkout`) — real Orders + Inventory — so `core` stays
+  lean (~0.9 GB); `full`/`lean-jvm` fold it in. Payment + Notification join the
+  checkout overlay as they become real.
 - **Chaos / incident framework:** `tools/incident-simulator/` orchestrating
   labeled scenarios; `(time_window, root_cause)` records per the
   [`docs/dataset/`](docs/dataset/) schema; annotations in Grafana.

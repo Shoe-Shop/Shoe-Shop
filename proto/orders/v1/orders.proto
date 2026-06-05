@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+// Orders service: the system of record for customer orders and the authority for
+// the checkout saga (ADR-0003). The SYNC front door is gRPC — CreateOrder
+// persists a PENDING order and returns immediately, then Orders drives the
+// fulfilment saga ASYNCHRONOUSLY over NATS JetStream (reserve stock → authorize
+// payment → confirm, with compensation on failure). The async saga subjects and
+// their JSON event envelope are intentionally NOT modelled here; see ADR-0003.
+package orders.v1;
+
+option go_package = "github.com/shoeshop/shoe-shop/proto/gen/go/orders/v1;ordersv1";
+
+// Java codegen (Orders is the only Java consumer): top-level classes in a clean
+// package so the Spring service uses e.g. com.shoeshop.orders.grpc.CreateOrderRequest.
+option java_multiple_files = true;
+option java_package = "com.shoeshop.orders.grpc";
+option java_outer_classname = "OrdersProto";
+
+// The lifecycle state of an order. Terminal states are CONFIRMED and CANCELLED;
+// PENDING/RESERVING/AUTHORIZING are in-flight saga states (ADR-0003 §2).
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_PENDING = 1;     // persisted; saga not yet started
+  ORDER_STATUS_RESERVING = 2;   // inventory.reserve published, awaiting reply
+  ORDER_STATUS_AUTHORIZING = 3; // payment.authorize published, awaiting reply
+  ORDER_STATUS_CONFIRMED = 4;   // terminal — stock reserved + payment authorized
+  ORDER_STATUS_CANCELLED = 5;   // terminal — rejected/declined + compensated
+}
+
+// A single line of an order: a product, how many units, and the unit price the
+// shopper saw at checkout. The BFF assembles these from the cart (quantities)
+// enriched with catalogue prices before calling CreateOrder.
+message OrderItem {
+  string product_id = 1;
+  int32 quantity = 2;
+  int64 unit_price_cents = 3;
+}
+
+// An order and its current saga state.
+message Order {
+  string id = 1;
+  string user_id = 2;
+  OrderStatus status = 3;
+  // Sum of quantity * unit_price_cents across all items.
+  int64 total_cents = 4;
+  string currency = 5;
+  repeated OrderItem items = 6;
+  // RFC 3339 / ISO 8601 timestamps (UTC).
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message CreateOrderRequest {
+  string user_id = 1;
+  repeated OrderItem items = 2;
+  string currency = 3;
+}
+
+message CreateOrderResponse {
+  // The persisted order, status ORDER_STATUS_PENDING — the saga runs async.
+  Order order = 1;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message GetOrderResponse {
+  Order order = 1;
+}
+
+// OrdersService is the synchronous front door to checkout. Fulfilment proceeds
+// asynchronously over NATS JetStream after CreateOrder returns (ADR-0003).
+service OrdersService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+}
