@@ -21,10 +21,10 @@ const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 // the stage (negative y = up). The cycle a shoe travels is 0 → 3 → 2 → 1 → 0:
 // front-centre → left → upper-left (farthest) → upper-right (incoming) → front.
 const HERO_SLOTS = [
-  { x: 0, y: 2, scale: 1, opacity: 1, z: 40 }, //   0 front — centre, full size
+  { x: 0, y: 2, scale: 0.92, opacity: 1, z: 40 }, //  0 front — centre
   { x: 46, y: -44, scale: 0.3, opacity: 0.72, z: 22 }, // 1 incoming — upper right
   { x: -20, y: -34, scale: 0.24, opacity: 0.5, z: 16 }, // 2 farthest — upper left
-  { x: -50, y: -4, scale: 0.4, opacity: 0.82, z: 26 }, // 3 outgoing — left, mid
+  { x: -62, y: -4, scale: 0.4, opacity: 0.82, z: 26 }, // 3 outgoing — left, mid
 ] as const;
 
 export function Hero({ products }: { products: Product[] }) {
