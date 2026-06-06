@@ -86,7 +86,7 @@ tasks:
       - task: obs
 
   up:checkout:
-    desc: "Start platform + read path + the v0.3 write path (real Orders + Inventory)"
+    desc: "Start platform + read path + the v0.3 write path (real Orders + Inventory + Payment)"
     deps: [_ensure-env]
     cmds:
       - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.CHECKOUT}} up -d --remove-orphans

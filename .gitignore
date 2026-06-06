@@ -2,6 +2,9 @@
 # Shoe Shop — polyglot monorepo .gitignore
 # ─────────────────────────────────────────────────────────────
 
+# ── Local tooling state (Claude Code harness) ────────────────
+.claude/
+
 # ── Secrets & local env ──────────────────────────────────────
 .env
 .env.*

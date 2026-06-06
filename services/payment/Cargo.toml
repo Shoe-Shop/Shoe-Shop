@@ -1,0 +1,43 @@
+[package]
+name = "payment"
+version = "0.3.0"
+edition = "2021"
+publish = false
+description = "Shoe Shop Payment — deterministic payment simulator for the v0.3 checkout saga (ADR-0003)"
+
+[dependencies]
+# Async runtime + tiny HTTP health surface (the saga itself is NATS-only).
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+axum = "0.8"
+anyhow = "1"
+futures = "0.3"
+
+# NATS JetStream — the saga transport (consume payment.authorize/void, publish
+# payment.authorized/declined). jetstream ships in the default features.
+async-nats = "0.49"
+
+# Postgres via the sqlx runtime query API (no compile-time macros → no live DB
+# needed at image build). sslmode=disable locally, so no TLS feature required.
+sqlx = { version = "0.9", features = ["runtime-tokio", "postgres", "uuid"] }
+
+# JSON event envelope (ADR-0003 §4) + ids + RFC 3339 timestamps.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+bytes = "1"
+
+# Four-signal MELT. Saga spans are created via the OpenTelemetry API directly
+# (mirroring the Go/Java references — inventory/telemetry/nats.go, orders
+# NatsTracing); `tracing` is the logs/events facade, bridged to OTLP by
+# opentelemetry-appender-tracing (which stamps trace_id/span_id from the attached
+# OTel context). OTLP/gRPC exporter for all three signal providers.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "metrics", "logs"] }
+opentelemetry-appender-tracing = "0.32"
+
+[profile.release]
+opt-level = 2

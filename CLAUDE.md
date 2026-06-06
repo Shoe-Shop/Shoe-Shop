@@ -9,24 +9,28 @@ A polyglot (6-language, ~11-service) e-commerce platform whose **real product is
 observability data** — correlated four-signal telemetry (**MELT**: Metrics,
 Events, Logs, Traces) plus a labeled, reproducible **incident corpus** to train a
 future AI SRE ("project 2"). The storefront is the vehicle, not the goal; see
-**[ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)**. Seven
+**[ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)**. Eight
 services are real today (**Frontend** Next.js 15, **Catalogue** Go, **BFF** TS,
-**Cart** Node, **Users** Python, **Inventory** Go, **Orders** Java) + the 5 infra
-containers; the rest are `traefik/whoami` stubs.
-**7 real services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
-BFF TS, **Frontend** Next.js 15, **Inventory** Go, **Orders** Java/Spring — four
-signals verified correlated) — **7 of 11 MELT-complete.** The v0.2-MELT retrofit
-phase is done and the **v0.3 NATS JetStream write path is in progress (2 of 4):
-Inventory (Go) then Orders (Java/Spring)**. Orders is the **checkout-saga
-orchestrator** (ADR-0003): sync gRPC `CreateOrder`/`GetOrder` front door, then the
-async saga over NATS (owns `ORDERS`; reserve → authorize → confirm, with
-compensation). Both write-path services use the cross-cutting **NATS+OTel
-trace-propagation pattern** (W3C `traceparent` rides NATS message headers, so the
-whole async saga is ONE correlated trace — verified live: one 33-span Tempo trace
-`bff → orders → inventory → orders`). Exemplars: the two Go services **and Orders
-(Java, via the OTel agent)** emit metric **exemplars natively**; the three JS/TS
-services (Cart, BFF, Frontend) get them from the bundle's Tempo metrics-generator,
-because OpenTelemetry-JS does not (verified; §9). See ARCHITECTURE.md §2 / §9 + ADR-0003.
+**Cart** Node, **Users** Python, **Inventory** Go, **Orders** Java, **Payment** Rust)
++ the 5 infra containers; the rest are `traefik/whoami` stubs.
+**8 real services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
+BFF TS, **Frontend** Next.js 15, **Inventory** Go, **Orders** Java/Spring, **Payment**
+Rust — four signals verified correlated) — **8 of 11 MELT-complete.** The v0.2-MELT
+retrofit phase is done and the **v0.3 NATS JetStream write path is in progress (3 of 4):
+Inventory (Go), Orders (Java/Spring), then Payment (Rust)**; only Notification (Go)
+remains. Orders is the **checkout-saga orchestrator** (ADR-0003): sync gRPC
+`CreateOrder`/`GetOrder` front door, then the async saga over NATS (owns `ORDERS`;
+reserve → authorize → confirm, with compensation). Payment is the **deterministic
+simulator** (ADR-0003 §6): NATS-only, consumes `payment.authorize`, decides
+authorize/decline by env-tunable rules (default authorize-all), publishes
+`payment.authorized`/`payment.declined`. All write-path services use the cross-cutting
+**NATS+OTel trace-propagation pattern** (W3C `traceparent` rides NATS message headers,
+so the whole async saga is ONE correlated trace — verified live: one Tempo trace
+`bff → orders → inventory → orders → payment → orders → CONFIRMED`). Exemplars: the two
+Go services **and Orders (Java, via the OTel agent)** emit metric **exemplars natively**;
+the three JS/TS services (Cart, BFF, Frontend) **and Payment (Rust)** get them from the
+bundle's Tempo metrics-generator, because OpenTelemetry-JS and `opentelemetry_sdk` 0.32
+(Rust) do not (both verified at the SDK source; §9). See ARCHITECTURE.md §2 / §9 + ADR-0003.
 
 ## Hard rules
 - **No hallucination.** Verify against the code/registry before claiming things.
@@ -103,8 +107,21 @@ each born MELT-complete:
   propagation hand-wired. `services/orders/` (Maven, Spring Boot 3.4.1, grpc-java,
   jnats, JdbcClient). Verified live: one 33-span trace across NATS. See §9 + memory
   `orders-java-otel-agent-sdk`.
-- ⬜ **Payment (Rust/Axum)** — next: deterministic simulator; Rust OTel verified last.
-  Until then the saga's `payment.authorized/declined` is simulated via `nats-box`.
-- ⬜ **Notification (Go)** — pure subscriber on terminal order events.
+- ✅ **Payment (Rust/Axum)** — done, MELT-complete, verified correlated. Deterministic
+  simulator (ADR-0003 §6): NATS-only saga participant, consumes `payment.authorize`,
+  decides authorize/decline by env-tunable rules (amount band / hash-of-`order_id`
+  failure rate / injected latency; default authorize-all), persists idempotently to
+  Postgres, publishes `payment.authorized`/`payment.declined`. First **Rust** stack;
+  hand-wired four signals (`tracing` + `opentelemetry-otlp` 0.32); mirrors the NATS+OTel
+  spine in Rust (`services/payment/src/natstrace.rs`). Verified live: full checkout is one
+  trace incl. the payment hop, and `PAYMENT_FAILURE_RATE=1.0` → CANCELLED via
+  compensation. **Rust 0.32 has the JS-like exemplar gap** → Tempo metrics-generator (§9).
+  Async gotcha: handler runs in `FutureExt::with_context(cx)` so trace_id survives
+  `.await` thread-hops. `services/payment/` (Cargo, Axum, async-nats, sqlx). See §9 +
+  memory `payment-rust-otel-nats-sdk`.
+- ⬜ **Notification (Go)** — **next** (last v0.3 service): pure subscriber on terminal
+  order events (`orders.confirmed`/`orders.cancelled` on the `ORDERS` stream); emits
+  notification Events; no new transport. Reuses the proven Go MELT module set + NATS+OTel
+  spine.
 
 **Then:** incident/chaos framework — after enough real, MELT-complete services exist to break.

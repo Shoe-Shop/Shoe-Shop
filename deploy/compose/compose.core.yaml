@@ -210,19 +210,9 @@ services:
   # the checkout overlay (compose.checkout.yaml) with the rest of the write path,
   # not as a stub here. `task up:checkout` / `up:full` bring it up.
 
-  # ── Payment — Rust · Axum (Postgres) ─────────────────────────────
-  payment:
-    <<: *stub
-    # build: { context: ../../services/payment }
-    container_name: shoeshop-payment
-    environment:
-      OTEL_SERVICE_NAME: payment
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
-      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
-      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
-    ports:
-      - "${PAYMENT_PORT:-9005}:80"
-    depends_on:
-      postgres: { condition: service_started }
-      otel-lgtm: { condition: service_started }
-    mem_limit: 96m
+  # ── Payment — Rust · Axum (Postgres + NATS) ──────────────────────
+  # The real Payment service is the v0.3 deterministic payment simulator
+  # (ADR-0003 §6) and lives in the checkout overlay (compose.checkout.yaml) with
+  # the rest of the write path, not as a stub here — defining it only there avoids
+  # the compose ports-list append/self-conflict (same pattern as Orders).
+  # `task up:checkout` / `up:full` bring it up.

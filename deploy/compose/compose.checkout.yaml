@@ -103,3 +103,54 @@ services:
       retries: 5
       start_period: 20s
     mem_limit: 128m
+
+  # ── Payment — Rust · Axum (Postgres + NATS) ──────────────────────
+  # Real service (v0.3, MELT-complete). The deterministic payment SIMULATOR
+  # (ADR-0003 §6): a NATS-only saga participant (no gRPC/proto) that consumes
+  # payment.authorize/void on the PAYMENT stream, decides authorize vs decline by
+  # deterministic, env-tunable rules (amount band / hash-of-order_id failure rate /
+  # injected latency — for reproducible incidents), and publishes
+  # payment.authorized/declined back for the Orders orchestrator. Born
+  # MELT-complete: mirrors the NATS+OTel traceparent-in-headers spine
+  # (inventory/telemetry/nats.go is the Go reference). Defaults below authorize
+  # everything so the happy path works out of the box; uncomment the decline/
+  # latency knobs to inject reproducible payment incidents. Build context is
+  # services/payment (no repo-root proto dependency, unlike Orders/Inventory).
+  payment:
+    build:
+      context: ../../services/payment
+    image: shoeshop/payment:dev
+    restart: "no"
+    networks: [shoeshop]
+    container_name: shoeshop-payment
+    environment:
+      OTEL_SERVICE_NAME: payment
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      OTEL_METRICS_EXEMPLAR_FILTER: trace_based
+      PAYMENT_HEALTH_ADDR: "0.0.0.0:8080"
+      PAYMENT_DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/payment?sslmode=disable"
+      NATS_URL: "nats://nats:4222"
+      # ── Deterministic incident knobs (default = authorize everything) ──
+      # Decline when amount_cents is within [MIN, MAX] (inclusive). Unset = off.
+      # PAYMENT_DECLINE_MIN_CENTS: "50000"
+      # PAYMENT_DECLINE_MAX_CENTS: "60000"
+      # Decline a deterministic fraction of orders (hash of order_id < rate).
+      # PAYMENT_FAILURE_RATE: "0.2"
+      # Inject fixed processing latency in milliseconds (latency-spike incidents).
+      # PAYMENT_LATENCY_MS: "0"
+    ports:
+      - "${PAYMENT_PORT:-9005}:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      otel-lgtm: { condition: service_started }
+    healthcheck:
+      # Distroless has no shell/curl — the binary's own subcommand probes /healthz.
+      test: ["CMD", "/payment", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 96m

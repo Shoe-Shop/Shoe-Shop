@@ -6,9 +6,36 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-05 (**Orders (Java/Spring) shipped MELT-complete — the v0.3
+> _Last updated: 2026-06-06 (**Payment (Rust/Axum) shipped MELT-complete — the
+> deterministic payment simulator; 8 of 11 services MELT-complete**, 3 of 4 write-path
+> services done). Payment is a **NATS-only** saga participant (ADR-0003 §6): it consumes
+> `payment.authorize` on the `PAYMENT` stream, decides authorize/decline by deterministic,
+> env-tunable rules (amount band / hash-of-`order_id` failure rate / injected latency —
+> default authorize-all, so the happy path works out of the box and incidents are opt-in),
+> persists each decision to Postgres (idempotent, `UNIQUE(order_id)`), and publishes
+> `payment.authorized`/`payment.declined` back for the Orders orchestrator. It is the first
+> **Rust** stack and mirrors the NATS+OTel **`traceparent`-in-headers** spine in Rust
+> (`services/payment/src/natstrace.rs`, the Go/Java reference). Born MELT-complete via
+> `tracing` + `opentelemetry-otlp` (OTLP/gRPC); the consume/DB/publish spans join the
+> single saga trace. **Verified live:** a real checkout is **one trace** `bff → orders →
+> (NATS) → inventory → (NATS) → orders → (NATS) → payment → (NATS) → orders → CONFIRMED`
+> (one Tempo trace spanning bff·cart·catalogue·inventory·orders·**payment**; the frontend
+> span prepends when driven via the UI); the saga `trace_id` stamps payment's logs +
+> events (`payment.authorized`/`payment.declined`, scope `shoeshop/payment`) in Loki, and
+> RED (`payment_requests_total`/`payment_duration_seconds_*{service_name="payment"}`)
+> carries correct resource labels. A forced-decline run (`PAYMENT_FAILURE_RATE=1.0`)
+> reached **CANCELLED** via compensation (`inventory.release`). **Per-stack exemplar
+> finding (verified in Docker by reading the SDK source):** `opentelemetry_sdk` 0.32 does
+> **not** populate metric exemplars (the data model carries the field but there is no
+> reservoir/filter pipeline and no `OTEL_METRICS_EXEMPLAR_FILTER`), so Payment has the
+> **same exemplar gap as the JS/TS services** — the metric↔trace join is served by the
+> bundle's Tempo metrics-generator (`traces_spanmetrics_*{service="payment"}`, verified
+> with exemplars), not the app SDK. The async-correctness detail that matters in Rust: the
+> handler runs inside `FutureExt::with_context(cx)` so the OTel context survives `.await`
+> thread-hops and every log/event is correlated. See §9 "Payment MELT implementation".
+> Previously: **Orders (Java/Spring) shipped MELT-complete — the v0.3
 > checkout saga is live; 7 of 11 services MELT-complete**, 2 of 4 write-path services
-> done). Orders is the **saga orchestrator** (ADR-0003): a sync gRPC front door
+> done. Orders is the **saga orchestrator** (ADR-0003): a sync gRPC front door
 > (`CreateOrder`/`GetOrder`; persists PENDING, returns immediately) that drives the
 > fulfilment saga asynchronously over NATS JetStream — owns the `ORDERS` stream,
 > publishes `inventory.reserve`/`payment.authorize`, consumes the
@@ -114,38 +141,40 @@ This is the most important section — do not assume more is built than is liste
 | **Frontend** (Next.js 15 App Router, NEXUS storefront) | ✅ **Done & MELT-complete** (v0.2-MELT) — home · shop (search + filter + sort) · PDP · cart · account; live BFF calls; four signals **verified correlated** in Grafana (RED + Web Vitals histograms, trace_id-stamped logs/events, frontend→bff→catalogue traces, spanmetrics exemplars) |
 | **Inventory** (Go, gRPC + NATS JetStream, Postgres+sqlc, OTel) | ✅ **Done & MELT-complete** (v0.3) — sync stock read path + async checkout-saga reserve/release; four signals **verified correlated**, incl. trace propagated across NATS |
 | **Orders** (Java 21 · Spring Boot · gRPC + NATS JetStream, Postgres) | ✅ **Done & MELT-complete** (v0.3) — sync CreateOrder/GetOrder + the checkout-saga orchestrator (reserve → authorize → confirm, with compensation); four signals **verified correlated**, saga is one trace across NATS |
-| payment | 🟡 **Stub** (`traefik/whoami`) — real ports/limits/deps, no logic |
+| **Payment** (Rust · Axum · NATS JetStream, Postgres) | ✅ **Done & MELT-complete** (v0.3) — the deterministic payment simulator (ADR-0003 §6); NATS-only saga participant (`payment.authorize` → `payment.authorized`/`payment.declined`); four signals **verified correlated**, joins the one saga trace across NATS |
 | shipping, recommendation, notification | 🟡 **Stubs** (full profile) |
 | Zitadel auth | 🟡 Wired in `full` profile, not yet integrated |
 | Incident / chaos framework | 🔴 **Planned** (see §11) |
 | k3d / Helm / Argo CD / Istio paths | 🔴 **Planned / documented only** |
 
 **Rule of thumb:** Catalogue, the BFF, Cart, Users, the **Frontend**, **Inventory**,
-**Orders**, + the 5 infra containers contain real behaviour. The **Frontend** (NEXUS,
-Next.js 15) calls the BFF live for catalogue, search, cart and checkout. **Inventory**
-(Go) and **Orders** (Java) are the v0.3 write-path services: Orders is the checkout-saga
-orchestrator (sync `CreateOrder`/`GetOrder` over gRPC, then the async saga over NATS
-JetStream), and Inventory runs the inventory side of that saga. Payment, shipping,
+**Orders**, **Payment**, + the 5 infra containers contain real behaviour. The **Frontend**
+(NEXUS, Next.js 15) calls the BFF live for catalogue, search, cart and checkout.
+**Inventory** (Go), **Orders** (Java) and **Payment** (Rust) are the v0.3 write-path
+services: Orders is the checkout-saga orchestrator (sync `CreateOrder`/`GetOrder` over
+gRPC, then the async saga over NATS JetStream), Inventory runs the inventory side of that
+saga, and Payment is the deterministic authorize/decline simulator. shipping,
 recommendation and notification remain `traefik/whoami` placeholders. The five
 read-path real services live in the **`core` profile** (`task up:core`); the v0.3
-**write path (Orders + Inventory) is the opt-in `checkout` overlay** — `task up:checkout`
-brings up the read path + the real write path for end-to-end checkout traces, keeping
-`core` lean (ADR-0003 profile decision). `full`/`lean-jvm` fold in the checkout overlay.
+**write path (Orders + Inventory + Payment) is the opt-in `checkout` overlay** —
+`task up:checkout` brings up the read path + the real write path for end-to-end checkout
+traces, keeping `core` lean (ADR-0003 profile decision). `full`/`lean-jvm` fold in the
+checkout overlay.
 
 > **✅ Telemetry reality (retrofit complete; v0.3 write path in progress — born MELT-complete).**
-> **Seven real services — Catalogue (Go), Users (Python), Cart (Node), BFF (TS), the
-> Frontend (Next.js 15), Inventory (Go) and now Orders (Java/Spring) — are
+> **Eight real services — Catalogue (Go), Users (Python), Cart (Node), BFF (TS), the
+> Frontend (Next.js 15), Inventory (Go), Orders (Java/Spring) and now Payment (Rust) — are
 > MELT-complete:** Metrics + Events + Logs + Traces emitted and **verified correlated**
 > in the LGTM bundle (§9). Per ADR-0002 the golden standard is **four correlated
-> signals (MELT)**, so **7 of 11 services are MELT-complete** (the other 4 are
+> signals (MELT)**, so **8 of 11 services are MELT-complete** (the other 3 are
 > `traefik/whoami` stubs that emit nothing real). The v0.2-MELT retrofit is done and
 > the five read-path services come up together on the default `core` profile; the v0.3
-> write path — **Inventory (Go) then Orders (Java)** — adds the checkout saga, born
-> MELT-complete (ADR-0003), proving the NATS+OTel trace-propagation pattern in two
-> stacks. Coverage is tracked in the matrix in §9. (The three JS/TS services — Cart,
-> BFF, Frontend — carry the documented JS-stack exemplar caveat: their metric↔trace
-> exemplars come from the bundle's Tempo metrics-generator, not the OTel-JS SDK. The
-> two Go services **and Java/Orders** emit metric exemplars natively — see the §9
+> write path — **Inventory (Go), Orders (Java), then Payment (Rust)** — adds the checkout
+> saga, born MELT-complete (ADR-0003), proving the NATS+OTel trace-propagation pattern in
+> three stacks. Coverage is tracked in the matrix in §9. (The JS/TS services — Cart, BFF,
+> Frontend — **and now Rust/Payment** carry the documented exemplar caveat: their
+> metric↔trace exemplars come from the bundle's Tempo metrics-generator, not the app SDK.
+> The two Go services **and Java/Orders** emit metric exemplars natively — see the §9
 > Per-stack exemplar policy.)
 
 ---
@@ -174,7 +203,7 @@ OTel Collector) on port 3000 / OTLP 4317-4318. Pyroscope is an opt-in sidecar.
 | 3 | **catalogue** | **Go 1.25 · gRPC + sqlc** | gRPC | Postgres + Meilisearch | **real** |
 | 4 | **cart** | Node.js · gRPC | gRPC | Redis | **real** |
 | 5 | **orders** | **Java 21 · Spring Boot** | gRPC | Postgres + NATS | **real** (MELT-complete) |
-| 6 | payment | Rust · Axum | gRPC | Postgres | stub |
+| 6 | **payment** | **Rust · Axum + NATS** | — (NATS-only) | Postgres + NATS | **real** (MELT-complete) |
 | 7 | **users** | **Python 3.12 · FastAPI + gRPC** | gRPC | Postgres | **real** |
 | 8 | shipping | Kotlin · Ktor | gRPC | Postgres + NATS | stub |
 | 9 | **inventory** | **Go · gRPC + NATS** | gRPC | Postgres + NATS | **real** (MELT-complete) |
@@ -191,8 +220,8 @@ Taskfile.yml                  # dual-path task runner (go-task)
 ARCHITECTURE.md               # this file
 README.md                     # public pitch / blueprint
 deploy/compose/               # compose.yaml (backbone) + profile overlays
-  ├── compose.core.yaml       # read-path services (all REAL) + payment stub
-  ├── compose.checkout.yaml   # v0.3 write path: REAL orders (Java) + inventory (Go)
+  ├── compose.core.yaml       # read-path services (all REAL)
+  ├── compose.checkout.yaml   # v0.3 write path: REAL orders (Java) + inventory (Go) + payment (Rust)
   ├── compose.full.yaml       # +remaining stubs +zitadel
   ├── compose.lean-jvm.yaml   # JVM heap caps
   ├── compose.pyroscope.yaml  # opt-in profiling
@@ -211,6 +240,7 @@ services/users/               # Users (Python · FastAPI + gRPC)
 services/frontend/            # NEXUS storefront (Next.js 15)
 services/inventory/           # Inventory (Go · gRPC read + NATS saga) — v0.3
 services/orders/              # Orders (Java · Spring Boot · gRPC + NATS saga) — v0.3
+services/payment/             # Payment (Rust · Axum + NATS saga · deterministic simulator) — v0.3
 ```
 
 ---
@@ -357,7 +387,19 @@ there is no `MeterProvider` option and no env var. An end-to-end test (record un
 a sampled span) and a live `query_exemplars` both return **zero exemplars**. Go and
 Python emit exemplars natively; **JS/TS (Cart, BFF) cannot.**
 
-**The policy (applies to every JS/TS service — Cart today, BFF next):**
+> **Rust shares this gap (verified in Docker, 2026-06).** `opentelemetry_sdk` **0.32**
+> likewise does **not** populate metric exemplars: the metrics data model carries an
+> `Exemplar<T>` type and `.exemplars()` accessors (for OTLP wire-compat), but every
+> datapoint is constructed `exemplars: vec![]` and there is **no** `ExemplarFilter`/
+> `ExemplarReservoir`/`with_exemplar` API and **no** `OTEL_METRICS_EXEMPLAR_FILTER`
+> support — nothing fills the field. A live `query_exemplars` on
+> `payment_duration_seconds_bucket` returned **zero**, while the bundle's
+> `traces_spanmetrics_latency_bucket{service="payment"}` carried `traceID` exemplars.
+> So **Payment (Rust)** follows the same policy below as the JS/TS services. (Go, Python
+> and Java/agent remain the native-exemplar stacks.)
+
+**The policy (applies to every stack whose SDK can't emit exemplars — JS/TS Cart, BFF,
+Frontend, and Rust Payment):**
 1. The service still emits **app-level RED** (counter + latency histogram by
    method/status, correct resource attrs) over OTLP. This is required and works.
 2. The **metric↔trace exemplar** join (correlation-contract #2, a *SHOULD*) is
@@ -393,6 +435,7 @@ Tracks each real service against the four signals. `M` Metrics · `E` Events ·
 | frontend | TS · Next.js 15 | ✅† | ✅ | ✅ | ✅ | ✅ (verified correlated — † exemplars via bundle, same JS gap as Cart/BFF) |
 | inventory | Go | ✅ | ✅ | ✅ | ✅ | ✅ (v0.3 write-path — verified correlated; **native** Go exemplars, no JS gap; trace propagated across NATS) |
 | orders | Java · Spring Boot | ✅‡ | ✅ | ✅ | ✅ | ✅ (v0.3 saga orchestrator — verified correlated; **native** Java exemplars via the OTel agent, no JS gap; saga is ONE trace across NATS) |
+| payment | Rust · Axum | ✅† | ✅ | ✅ | ✅ | ✅ (v0.3 payment simulator — verified correlated; **exemplar gap like JS** (opentelemetry_sdk 0.32, †) → Tempo metrics-generator; joins the ONE saga trace across NATS) |
 
 > ✅ emitted & validated · ⬜ not yet · update a cell only after verifying the
 > signal in Grafana, not on writing the code.
@@ -855,8 +898,9 @@ opentelemetry-api `1.45.0`.
   payment.authorize`. The same saga `trace_id` was carried by the orders RED
   exemplar **and** by the orders logs/events in Loki (`orders.placed`,
   `orders.reserved` at scope `shoeshop/orders`) — M → T → L/E all on one id, across
-  two async NATS hops. (Payment is simulated via `nats-box` until the Rust service
-  exists, so the `payment.authorized` step starts its own trace, as designed.)
+  two async NATS hops. (At the time of that run Payment was simulated via `nats-box`;
+  it is now the **real Rust service** — see the Payment subsection below, where the
+  whole saga including the payment hop is one trace.)
 
 > **Verified Java OTel + saga set** (built in Docker): OpenTelemetry Java **agent**
 > `2.28.1` (pinned) + opentelemetry-api `1.45.0`; Spring Boot `3.4.1` (Java 21);
@@ -864,6 +908,74 @@ opentelemetry-api `1.45.0`.
 > protobuf-maven-plugin `0.6.1`); `io.nats:jnats` `2.20.4`. The agent emits all four
 > signals over OTLP/gRPC from `OTEL_*` env alone; only `NatsTracing`/`Events` are
 > app code.
+
+### Payment MELT implementation (Rust · Axum + NATS · v0.3 simulator — verified correlated 2026-06-06)
+
+Payment is the **deterministic payment simulator** (ADR-0003 §6) and the project's first
+**Rust** stack. Unlike Orders (OTel Java agent), Rust has no agent — all four signals are
+hand-wired with the `tracing` + OpenTelemetry crates, and the NATS+OTel propagation
+mirrors Inventory's Go `telemetry/nats.go`. It is a **NATS-only** saga participant (no
+gRPC/proto): a JetStream durable consumer (`payment-authorize-worker`, `filter_subject:
+payment.authorize`, AckExplicit, `max_deliver: 5`) on the `PAYMENT` stream, plus a tiny
+Axum `/healthz` for the container probe. Code: [`services/payment/`](services/payment/)
+(`saga.rs`, `decision.rs`, `store.rs`, `telemetry.rs`, `natstrace.rs`). All crate
+versions/APIs were **verified by reading the crate source + building in Docker** (compiler
+as ground truth) before use.
+
+- **Deterministic decision (the simulator).** `decision.rs` decides authorize/decline by
+  env-tunable rules, precedence: (1) **amount band** `[PAYMENT_DECLINE_MIN_CENTS,
+  PAYMENT_DECLINE_MAX_CENTS]`; (2) **failure rate** — a stable fraction of `order_id`
+  (`PAYMENT_FAILURE_RATE`, hashed not random, so the *same order* always gets the same
+  outcome → replayable incidents); (3) else authorize. `PAYMENT_LATENCY_MS` injects
+  processing latency. **Defaults authorize everything**, so the happy path works out of
+  the box and incidents are opt-in.
+- **Idempotent persistence.** `store.rs` upserts one row per saga decision into the
+  `payment` Postgres DB (`INSERT … ON CONFLICT (order_id) DO NOTHING RETURNING`); a
+  redelivered `payment.authorize` replays the stored decision instead of charging twice.
+  The DB call runs inside a `db.payments.record_decision` span (parity with Orders' JDBC /
+  Inventory's pgx query spans).
+- **Metrics (M).** A hand-rolled RED recorder (`telemetry.rs`): `payment.requests`
+  (counter) + `payment.duration` (histogram, seconds) keyed by `subject` + `result`
+  (`authorized`/`declined`). In Prometheus: `payment_requests_total` +
+  `payment_duration_seconds_*{service_name="payment"}`. **Exemplar gap (verified):**
+  `opentelemetry_sdk` 0.32 does not populate exemplars — see the §9 Per-stack exemplar
+  policy Rust note — so the metric↔trace join comes from the bundle's Tempo
+  metrics-generator (`traces_spanmetrics_*{service="payment"}`), as for the JS/TS services.
+- **Logs (L).** `tracing` fans out to **stdout JSON** (so `task logs -- payment` works)
+  *and*, via `opentelemetry-appender-tracing`, to OTLP → Loki. In-request records carry
+  the active `trace_id`/`span_id` (the `SdkLogger` reads `Context::current()` at emit).
+  App logs keep their **module-path scope** (the §9 documented bridged-logs exception,
+  parallel to Python/Java); domain events use the service scope.
+- **Events (E).** Domain events are `tracing` events with `name:` → OTel **EventName** and
+  `target: "shoeshop/payment"` → the instrumentation **scope** (`payment.authorized`,
+  `payment.declined`); the event name is also the log **body**, matching the other
+  services' convention. They carry `trace_id`/`span_id` + domain attributes
+  (`order_id`, `authorization_id`, `amount_cents`, `reason`).
+- **NATS+OTel propagation + async correctness.** `natstrace.rs` adapts
+  `async_nats::HeaderMap` to OTel `Injector`/`Extractor`: extract `traceparent` and open a
+  CONSUMER span as the producer's child; open a PRODUCER span on reply and inject. The
+  handler body runs inside **`FutureExt::with_context(cx)`** (not a thread-local
+  `attach()` guard) so the OTel context **survives `.await` thread-hops** under tokio's
+  multi-thread runtime — without this, post-await logs/events silently lose the trace_id.
+  Resource parity (§9) is automatic: `Resource::builder()` reads only `OTEL_SERVICE_NAME`
+  + `OTEL_RESOURCE_ATTRIBUTES` (no host/process detectors).
+- **Correlation proven (live, in the LGTM bundle).** A real checkout produced **one Tempo
+  trace** spanning `bff · cart · catalogue · inventory · orders · payment` — including
+  Payment's `consume payment.authorize` (CONSUMER), `db.payments.record_decision` and
+  `publish payment.authorized` (PRODUCER) spans, across two further async NATS hops. The
+  same saga `trace_id` stamped Payment's `authorizing payment` log **and** its
+  `payment.authorized` event in Loki (scope `shoeshop/payment`, with `order_id`); RED was
+  present and a `PAYMENT_FAILURE_RATE=1.0` run reached **CANCELLED** via `payment.declined`
+  → `inventory.release` compensation. M → T → L/E all on one id.
+
+> **Verified Rust OTel + saga set** (resolved + built in Docker; APIs read from crate
+> source): `opentelemetry`/`opentelemetry_sdk` `0.32` + `opentelemetry-otlp` `0.32`
+> (`grpc-tonic,metrics,logs`) + `opentelemetry-appender-tracing` `0.32`; `tracing` `0.1` /
+> `tracing-subscriber` `0.3`; `async-nats` `0.49` (jetstream); `axum` `0.8`; `sqlx` `0.9`
+> (`runtime-tokio,postgres,uuid` — runtime query API, no compile-time DB); `tokio` `1`.
+> **No native metric exemplars in Rust 0.32** — metric↔trace join via the bundle's Tempo
+> metrics-generator (§9 Per-stack exemplar policy). The async context fix
+> (`FutureExt::with_context`) is mandatory for log/event correlation.
 
 ---
 
@@ -937,14 +1049,22 @@ unlabeled, unrecoverable telemetry.
      the `ORDERS` stream. Born MELT-complete via the **OTel Java agent** (native
      exemplars); BFF `POST /api/checkout/:userId` wired; verified correlated live
      (saga is one trace across NATS). **7 of 11 MELT-complete.**
-  3. ⬜ **Payment (Rust/Axum)** — deterministic payment simulator (reproducible
-     declines); Rust OTel verified last (least mature). Until it exists, the saga's
-     `payment.authorized/declined` is simulated via `nats-box`.
+  3. ✅ **Payment (Rust/Axum)** — deterministic payment simulator (reproducible
+     authorize/decline by amount band / hash-of-`order_id` failure rate / injected
+     latency; default authorize-all). NATS-only saga participant; first **Rust** stack;
+     born MELT-complete (`tracing` + `opentelemetry-otlp`), mirrors the NATS+OTel spine in
+     Rust. Verified correlated live — the full checkout (incl. the payment hop) is one
+     trace across NATS, and a forced-decline run reached CANCELLED via compensation. Rust
+     0.32 has the **JS-like exemplar gap** (→ Tempo metrics-generator, §9).
+     **8 of 11 MELT-complete.**
   4. ⬜ **Notification (Go)** — pure subscriber on terminal order events; fan-out.
+     **Next.** The last v0.3 write-path service: subscribes to `orders.confirmed`/
+     `orders.cancelled` on the `ORDERS` stream and emits notification Events (no new
+     transport); reuses the proven Go MELT module set + NATS+OTel spine.
   **Profile decision (resolved, ADR-0003):** the JVM-heavy write path is an opt-in
-  `checkout` overlay (`task up:checkout`) — real Orders + Inventory — so `core` stays
-  lean (~0.9 GB); `full`/`lean-jvm` fold it in. Payment + Notification join the
-  checkout overlay as they become real.
+  `checkout` overlay (`task up:checkout`) — real Orders + Inventory + Payment — so `core`
+  stays lean (~0.9 GB); `full`/`lean-jvm` fold it in. Notification joins the checkout
+  overlay when it becomes real.
 - **Chaos / incident framework:** `tools/incident-simulator/` orchestrating
   labeled scenarios; `(time_window, root_cause)` records per the
   [`docs/dataset/`](docs/dataset/) schema; annotations in Grafana.
