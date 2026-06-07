@@ -30,6 +30,33 @@ export interface User {
   createdAt: string;
 }
 
+// An order and its checkout-saga state, mirroring orders.v1 via the BFF
+// (services/orders proto). int64 amounts arrive as strings of minor units.
+export type OrderStatus =
+  | "ORDER_STATUS_UNSPECIFIED"
+  | "ORDER_STATUS_PENDING"
+  | "ORDER_STATUS_RESERVING"
+  | "ORDER_STATUS_AUTHORIZING"
+  | "ORDER_STATUS_CONFIRMED"
+  | "ORDER_STATUS_CANCELLED";
+
+export interface OrderItem {
+  productId: string;
+  quantity: number;
+  unitPriceCents: string;
+}
+
+export interface Order {
+  id: string;
+  userId: string;
+  status: OrderStatus;
+  totalCents: string;
+  currency: string;
+  items: OrderItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // BFF response envelopes.
 export interface ProductsResponse {
   products: Product[];
@@ -42,4 +69,7 @@ export interface CartResponse {
 }
 export interface UserResponse {
   user: User;
+}
+export interface OrderResponse {
+  order: Order;
 }

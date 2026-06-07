@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 import { useCart } from "@/components/cart/cart-provider";
 import { useResolvedCart } from "@/components/cart/use-resolved-cart";
+import { PlaceOrderButton } from "@/components/cart/place-order-button";
 import { ProductMedia } from "@/components/product/product-media";
 import { formatPrice } from "@/lib/utils";
 
@@ -106,13 +107,10 @@ export default function CartPage() {
                 {formatPrice(subtotalCents, currency)}
               </span>
             </div>
-            {/* Checkout requires the v0.3 write path — boundary only. */}
-            <button
-              disabled
-              className="mt-6 w-full cursor-not-allowed rounded-card bg-accent py-4 text-sm font-semibold uppercase tracking-[0.12em] text-accent-fg opacity-60"
-            >
-              Checkout — coming soon
-            </button>
+            {/* v0.3 checkout saga: place the order, then watch it resolve live. */}
+            <div className="mt-6">
+              <PlaceOrderButton />
+            </div>
             <div className="mt-4 flex items-center justify-between">
               <Link href="/shop" className="text-xs uppercase tracking-[0.16em] text-muted hover:text-fg">
                 Continue shopping

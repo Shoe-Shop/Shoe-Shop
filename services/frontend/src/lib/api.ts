@@ -4,6 +4,8 @@ import { bffBaseUrl, DEMO_ACCOUNT_EMAIL, DEMO_USER_ID } from "./env";
 import type {
   Cart,
   CartResponse,
+  Order,
+  OrderResponse,
   Product,
   ProductResponse,
   ProductsResponse,
@@ -117,6 +119,27 @@ export async function clearCart(userId = DEMO_USER_ID): Promise<Cart> {
     { method: "DELETE", cache: "no-store" },
   );
   return data.cart;
+}
+
+// ── Checkout (Orders saga) ───────────────────────────────────────────
+// The synchronous front door to the v0.3 checkout saga: the BFF assembles the
+// order from the cart (enriched with catalogue prices), calls Orders.CreateOrder
+// which persists PENDING and drives the async saga (reserve → authorize →
+// confirm) over NATS. Returns immediately; poll getOrder for the terminal state.
+export async function createCheckout(userId = DEMO_USER_ID): Promise<Order> {
+  const data = await getJson<OrderResponse>(
+    `/api/checkout/${encodeURIComponent(userId)}`,
+    { method: "POST", cache: "no-store" },
+  );
+  return data.order;
+}
+
+export async function getOrder(orderId: string): Promise<Order> {
+  const data = await getJson<OrderResponse>(
+    `/api/orders/${encodeURIComponent(orderId)}`,
+    { cache: "no-store" },
+  );
+  return data.order;
 }
 
 // ── Account (Users) ──────────────────────────────────────────────────

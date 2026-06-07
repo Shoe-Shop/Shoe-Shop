@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import { useCart } from "./cart-provider";
+import { PlaceOrderButton } from "./place-order-button";
 import { getProduct } from "@/lib/api";
 import type { Product } from "@/lib/types";
 import { ProductMedia } from "@/components/product/product-media";
@@ -167,13 +168,10 @@ export function CartDrawer() {
                   <p className="mb-5 text-xs text-muted">
                     Shipping &amp; taxes calculated at checkout.
                   </p>
-                  {/* Checkout needs the v0.3 write path — boundary only for now. */}
-                  <button
-                    disabled
-                    className="mb-3 w-full cursor-not-allowed rounded-card bg-accent py-4 text-sm font-semibold uppercase tracking-[0.12em] text-accent-fg opacity-60"
-                  >
-                    Checkout — coming soon
-                  </button>
+                  {/* v0.3 checkout saga: place the order, then route to live status. */}
+                  <div className="mb-3">
+                    <PlaceOrderButton />
+                  </div>
                   <button
                     onClick={() => clear()}
                     className="w-full text-xs uppercase tracking-[0.18em] text-muted transition-colors hover:text-accent"
