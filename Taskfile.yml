@@ -23,6 +23,7 @@ vars:
   FULL: -f deploy/compose/compose.full.yaml
   LEANJVM: -f deploy/compose/compose.lean-jvm.yaml
   PYRO: -f deploy/compose/compose.pyroscope.yaml
+  CHAOS: -f deploy/compose/compose.chaos.yaml
 
 tasks:
   default:
@@ -158,9 +159,17 @@ tasks:
       - 'echo "seed: not yet implemented — services arrive in v0.2"'
 
   chaos:run:
-    desc: "Run a reliability scenario by name (stub — lands in v0.6)"
+    desc: "Run a labeled incident scenario: task chaos:run -- payment-hard-decline (needs `task up:checkout` running)"
+    deps: [_ensure-env]
     cmds:
-      - 'echo "chaos:run {{.CLI_ARGS}}: not yet implemented — scenario tooling arrives in v0.6"'
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.CHAOS}} run --rm --build incident-simulator {{.CLI_ARGS}}
+
+  chaos:list:
+    desc: "List available incident scenarios"
+    silent: true
+    cmds:
+      - 'echo "Available scenarios (tools/incident-simulator/scenarios/):"'
+      - 'ls tools/incident-simulator/scenarios | sed "s/\\.yaml$//" | sed "s/^/  - /"'
 
   # ── Teardown ───────────────────────────────────────────────────────
   down:

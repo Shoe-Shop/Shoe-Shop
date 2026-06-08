@@ -1,0 +1,63 @@
+# Scenario manifest — payment hard-decline.
+#
+# The deterministic analog of Sock Shop's "Incident 3 — Payment Transaction
+# Failure" (there: scale payment to 0 -> connection-refused -> PAYMENT_FAILED).
+# Here we set the Payment simulator's failure rate to 1.0, so EVERY authorization
+# is declined ("do_not_honor"); the Orders saga then compensates (release the
+# inventory reservation) and the order ends CANCELLED. Reproducible by
+# construction — the decline is keyed, not flaky.
+#
+# Injection: env-knob (PAYMENT_FAILURE_RATE) — Payment reads its decision config
+# once at startup, so the simulator recreates the container to apply it.
+
+scenario_id: payment-hard-decline
+title: "Payment hard-decline — every authorization refused"
+severity: sev2
+target_service: payment
+
+fault:
+  type: payment-decline
+  injection_method: env-knob
+  parameters:
+    PAYMENT_FAILURE_RATE: "1.0"
+
+load:
+  orders: 5          # checkouts to drive through the saga
+  settle_s: 30       # wait for async compensation + (>=2) metric export ticks
+
+label:
+  root_cause: >
+    The Payment simulator was configured to decline 100% of authorizations
+    (PAYMENT_FAILURE_RATE=1.0), so every order's payment.authorize was answered
+    with payment.declined (do_not_honor). The Orders saga treated each decline
+    as terminal, ran compensation (released the inventory reservation), and
+    moved the order to CANCELLED — no order in the window could reach CONFIRMED.
+  affected_services: [payment, orders, inventory, notification, bff]
+  expected_symptoms:
+    - signal: events
+      service: payment
+      description: payment.declined domain event per order, reason=do_not_honor
+      where: 'event.name = "payment.declined"'
+    - signal: logs
+      service: payment
+      description: WARN "payment.declined" records, each carrying the saga trace_id
+      where: '{service_name="payment"} | json | level="warn"'
+    - signal: metrics
+      service: payment
+      description: decline rate at 100% — payment.requests with result=declined only
+      where: 'sum(rate(payment_requests_total{result="declined"}[1m]))'
+    - signal: traces
+      service: orders
+      description: >
+        saga trace shows payment.declined -> compensation -> order CANCELLED
+        (one correlated trace across the NATS hops)
+      where: '{ resource.service.name = "orders" && span.order.status = "CANCELLED" }'
+  correlation:
+    resource_selector: 'service.namespace="shoeshop", deployment.environment="local"'
+    exemplar_metric: payment_duration_seconds
+  remediation: >
+    Cleared PAYMENT_FAILURE_RATE (back to the authorize-all default) and recreated
+    the Payment container; subsequent checkouts authorized and confirmed normally.
+    The orders cancelled during the window require manual reconciliation. Durable
+    fix: alert on a sustained decline-rate spike and add a saga-level retry/backoff
+    for transient declines before compensating.

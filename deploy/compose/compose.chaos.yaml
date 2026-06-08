@@ -1,0 +1,25 @@
+# Chaos overlay — the incident simulator (tools/incident-simulator).
+#
+# NOT part of any `up:*` profile: it carries `profiles: [chaos]` so it never
+# auto-starts, and is invoked on demand via `task chaos:run -- <scenario>`
+# (docker compose run --rm). It needs the host Docker socket (to recreate a
+# target container) and the repo mounted at /work (compose files in, label
+# records out). Run it against an already-up checkout stack.
+
+services:
+  incident-simulator:
+    profiles: ["chaos"]
+    build:
+      context: ../../tools/incident-simulator
+    image: shoeshop/incident-simulator:dev
+    container_name: shoeshop-incident-simulator
+    networks: [shoeshop]
+    environment:
+      REPO_DIR: /work
+      BFF_URL: http://bff:8080
+    volumes:
+      # The repo: compose files to drive, docs/dataset/incidents to write into.
+      - ../../:/work
+      # docker-out-of-docker: the CLI in the container drives the host daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /work

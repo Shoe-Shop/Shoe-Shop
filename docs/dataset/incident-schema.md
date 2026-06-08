@@ -36,9 +36,25 @@ evidence.
   `deployment.environment=local` clock the services export with.
 - **Service names** MUST match `service.name` resource attributes exactly
   (`catalogue`, `bff`, `cart`, `users`, …) so labels join to telemetry.
-- `fault.injection_method` enumerates how the fault was introduced
-  (e.g. `toxiproxy`, `feature-flag`, `compose-stop`, `resource-limit`); the
-  enum is fixed when the incident-simulator lands.
+- `fault.injection_method` enumerates how the fault was introduced. Fixed by the
+  incident-simulator ([`tools/incident-simulator/`](../../tools/incident-simulator/))
+  to what the Compose stack can actually do:
+  - **`env-knob`** — set a service env var and recreate its container (e.g. the
+    Payment simulator's `PAYMENT_FAILURE_RATE` / `PAYMENT_LATENCY_MS`). The only
+    method **implemented** in simulator v0.
+  - **`compose-stop`** — stop a container outright (service-down faults; the
+    Compose analog of Sock Shop's "scale to 0"). *Designed, not yet wired.*
+  - **`resource-limit`** — apply a `mem_limit` / `cpus` cap to starve a service
+    (DB-throttle faults). *Designed, not yet wired.*
+  - **`load`** — drive excess storefront traffic (saturation/crash faults).
+    *Designed, not yet wired.*
+  - **`toxiproxy`** — network fault injection. *Planned* — requires a Toxiproxy
+    sidecar that is **not** in the stack today, so the cascading-timeout fixture
+    that uses it ([`examples/`](examples/)) remains a design fixture until then.
+- `correlation.order_ids` (optional) — for write-path incidents, the order ids a
+  run produced. Each order span carries an `order.id` attribute, so this anchors
+  the labeled window to its traces in Tempo even before `trace_ids` are
+  backfilled. Emitted by the incident-simulator.
 - A record is **well-formed** only if `signals_touched` has all four `true` and
   `correlation` provides at least one anchor — this enforces the MELT
   requirement at the dataset level.

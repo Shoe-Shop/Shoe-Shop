@@ -150,4 +150,21 @@ each born MELT-complete:
   saga trace_id. `services/notification/` (Go, nats.go jetstream). See §9 + memory
   `notification-go-nats-sdk`. **9 of 11 MELT-complete; v0.3 write path complete (4/4).**
 
-**Then:** incident/chaos framework — after enough real, MELT-complete services exist to break.
+**Chaos / incident framework (v0 — DONE this session):** `tools/incident-simulator/`
+(Python-in-container; `task chaos:run -- <scenario>`) runs one scenario
+`manifest → inject → load → recover → label`, writing a schema-v0 record to
+`docs/dataset/incidents/` with the captured `time_window` + `order_ids`. Fills the
+old `chaos:run` stub; fixes the `injection_method` enum (v0 implements `env-knob`:
+env var + `--force-recreate` one container; `compose-stop`/`resource-limit`/`load`
+designed, not wired). Two deterministic Payment-knob scenarios ship, both verified
+correlated live in the LGTM bundle (absolute windows): **payment-hard-decline**
+(`PAYMENT_FAILURE_RATE=1.0` → all orders CANCELLED; `payment_requests_total{result=
+"declined"}`=5 + per-order `payment.declined` WARN logs with the saga trace_id) and
+**payment-latency-spike** (`PAYMENT_LATENCY_MS=1500` → mean `payment_duration_seconds`
+≈1.51s, orders still CONFIRMED). Deterministic analogs of Sock Shop incidents 3/6
+(see memory `incident-simulator-v0`). Gotcha: a short incident window < the 60s OTLP
+metric-export interval, so the simulator injects a short `OTEL_METRIC_EXPORT_INTERVAL`
+onto the faulted container or metrics never flush before recovery recreates it.
+
+**Then:** more injection methods + service classes (compose-stop → service-down,
+resource-limit → DB throttle, load → saturation), Grafana annotations per window.

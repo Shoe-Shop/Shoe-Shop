@@ -94,6 +94,9 @@ venv/
 !proto/gen/python/**/*_pb2.py
 !proto/gen/python/**/*_pb2_grpc.py
 
+# Ephemeral fault override written by the incident-simulator (env-knob inject).
+deploy/compose/compose.incident.gen.yaml
+
 # ── Observability / data volumes (local) ─────────────────────
 deploy/compose/data/
 **/pgdata/

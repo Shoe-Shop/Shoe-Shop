@@ -1097,10 +1097,32 @@ from the ground up to lean on OpenTelemetry and Compose-native injection.) See
 Each incident is the **supervised target** of the project-2 dataset: a labeled
 `(time_window, root_cause, …)` record over a window of correlated MELT. The label
 **schema**, the **correlation contract** (the join keys the telemetry retrofit
-must satisfy), and a worked **example** are designed now — build deferred — in
-[`docs/dataset/`](docs/dataset/). This is *design-first on purpose*: the LGTM
+must satisfy), and a worked **example** are designed now in
+[`docs/dataset/`](docs/dataset/). This was *design-first on purpose*: the LGTM
 bundle is ephemeral, so incidents run before the schema exists would produce
 unlabeled, unrecoverable telemetry.
+
+**The incident-simulator (v0) has now landed** —
+[`tools/incident-simulator/`](tools/incident-simulator/), a Python-in-container
+runner driven by `task chaos:run -- <scenario>`. It executes one scenario
+`manifest → inject → load → recover → label`: injects a fault, drives the real
+storefront checkout load so it manifests across all four MELT signals, recovers,
+and writes a schema-v0 record to [`docs/dataset/incidents/`](docs/dataset/incidents/)
+with the captured `time_window` + `order_ids`. Injection is Compose-native; v0
+implements **`env-knob`** (set a service env var + `--force-recreate` the one
+container — the fixed `injection_method` enum lists the rest: `compose-stop`,
+`resource-limit`, `load`). Two scenarios ship, both deterministic via the Payment
+simulator's knobs and both verified correlated live in the LGTM bundle:
+**`payment-hard-decline`** (`PAYMENT_FAILURE_RATE=1.0` → every order declined →
+CANCELLED; verified `payment_requests_total{result="declined"}` + per-order
+`payment.declined` WARN logs carrying the saga `trace_id`) and
+**`payment-latency-spike`** (`PAYMENT_LATENCY_MS=1500` → authorizations succeed
+but the payment hop adds ~1.5s; verified mean `payment_duration_seconds` ≈ 1.51s).
+These are the deterministic analogs of Sock Shop incidents 3 (payment failure) and
+6 (gateway timeout). One gotcha baked in: an incident window is often shorter than
+the default 60s OTLP metric-export interval, so the simulator injects a short
+`OTEL_METRIC_EXPORT_INTERVAL` onto the faulted container for the duration — else
+the metric signal never flushes before recovery recreates it.
 
 ---
 
@@ -1170,9 +1192,15 @@ unlabeled, unrecoverable telemetry.
   **Profile decision (resolved, ADR-0003):** the JVM-heavy write path is an opt-in
   `checkout` overlay (`task up:checkout`) — real Orders + Inventory + Payment +
   Notification — so `core` stays lean (~0.9 GB); `full`/`lean-jvm` fold it in.
-- **Chaos / incident framework:** `tools/incident-simulator/` orchestrating
-  labeled scenarios; `(time_window, root_cause)` records per the
-  [`docs/dataset/`](docs/dataset/) schema; annotations in Grafana.
+- **Chaos / incident framework (v0 landed):** ✅ `tools/incident-simulator/`
+  orchestrating labeled scenarios (`manifest → inject → load → recover → label`),
+  writing `(time_window, root_cause, …)` records per the
+  [`docs/dataset/`](docs/dataset/) schema into `docs/dataset/incidents/`; the
+  `chaos:run` task stub is filled and the `injection_method` enum is fixed. Two
+  Payment-knob scenarios ship, verified correlated live (§10). **Next:** more
+  injection methods (`compose-stop` → Sock-Shop-style service-down; `resource-limit`
+  → DB throttle; `load` → saturation), the other service classes, and Grafana
+  annotations over each window.
 
 **Recommended sequencing:** the MELT retrofit on the existing 4 services is now
 **complete** — telemetry debt was paid at its cheapest point (4 services, no drift),

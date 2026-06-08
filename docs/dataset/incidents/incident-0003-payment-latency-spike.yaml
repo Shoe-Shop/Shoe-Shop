@@ -1,0 +1,76 @@
+# Captured incident label record (schema v0) — produced by
+# tools/incident-simulator. Real time_window + order ids from a live run
+# against the checkout stack; the static label fields come from the
+# scenario manifest scenarios/payment-latency-spike.yaml.
+
+schema_version: v0
+incident_id: incident-0003
+title: "Payment latency spike \u2014 slow authorizations inflate the saga"
+scenario_id: payment-latency-spike
+severity: sev3
+time_window:
+  start: '2026-06-08T12:14:58Z'
+  end: '2026-06-08T12:15:36Z'
+fault:
+  type: latency-injection
+  target_service: payment
+  injection_method: env-knob
+  parameters:
+    PAYMENT_LATENCY_MS: '1500'
+root_cause: "The Payment simulator was given a fixed 1500ms processing delay (PAYMENT_LATENCY_MS=1500)\
+  \ before deciding each authorization. Authorizations still succeeded, so orders reached\
+  \ CONFIRMED, but every payment.authorize hop added ~1.5s of latency \u2014 inflating the\
+  \ Payment processing-duration histogram and the overall checkout-saga trace while no service\
+  \ crashed.\n"
+affected_services:
+- payment
+- orders
+- notification
+- bff
+signals_touched:
+  metrics: true
+  events: true
+  logs: true
+  traces: true
+expected_symptoms:
+- signal: metrics
+  service: payment
+  description: payment.duration p99 jumps to ~1.5s (from sub-second baseline)
+  where: histogram_quantile(0.99, sum by (le) (rate(payment_duration_seconds_bucket[1m])))
+- signal: traces
+  service: payment
+  description: 'the consume span for payment.authorize is ~1.5s longer; the whole saga trace
+    is correspondingly slower (still ending CONFIRMED)
+
+    '
+  where: '{ resource.service.name = "payment" && duration > 1s }'
+- signal: logs
+  service: payment
+  description: '"authorizing payment" -> "payment.authorized" log pair per order, the gap
+    reflecting the injected sleep; each carries the saga trace_id
+
+    '
+  where: '{service_name="payment"} | json'
+- signal: events
+  service: payment
+  description: payment.authorized domain event still fires (no declines)
+  where: event.name = "payment.authorized"
+correlation:
+  resource_selector: service.namespace="shoeshop", deployment.environment="local"
+  exemplar_metric: payment_duration_seconds
+  order_ids:
+  - a69ec874-ef66-4ed8-9af4-01ad56bb6d0b
+  - 96af0888-027b-454e-b308-827fb5610ac8
+  - 11de7852-891a-4a87-8303-2d731b67b9ee
+  - ea45a161-49ec-43a6-b657-313c08ea7963
+  - b5d70e89-3305-4dab-ab26-a44d5029faf3
+  trace_ids: []
+remediation: 'Cleared PAYMENT_LATENCY_MS and recreated the Payment container; processing duration
+  returned to baseline. Durable fix: a saga-level timeout/SLO on the payment hop plus a latency
+  alert (p99 > 1s) so slow authorizations page before they pile up into a backlog.
+
+  '
+labeler: incident-simulator/v0
+notes: Captured run of scenario 'payment-latency-spike'. 5 order(s) placed against the seeded
+  shopper 11111111-1111-1111-1111-111111111111. trace_ids backfillable from Tempo by order.id
+  span attribute.

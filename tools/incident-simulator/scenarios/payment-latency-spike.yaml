@@ -1,0 +1,65 @@
+# Scenario manifest — payment latency spike.
+#
+# The deterministic analog of Sock Shop's "Incident 6 — Payment Gateway Timeout"
+# (there: a slow stripe-mock). Here we inject a fixed processing delay into the
+# Payment simulator (PAYMENT_LATENCY_MS) so every authorization takes ~1.5s.
+# Payments still SUCCEED (orders reach CONFIRMED), but the async fulfilment is
+# slow: the payment span and payment.duration histogram balloon, inflating the
+# end-to-end saga trace. A latency incident WITHOUT a crash — the early-warning
+# class.
+#
+# Injection: env-knob (PAYMENT_LATENCY_MS) — applied by recreating the container,
+# since the latency knob is read once at startup.
+
+scenario_id: payment-latency-spike
+title: "Payment latency spike — slow authorizations inflate the saga"
+severity: sev3
+target_service: payment
+
+fault:
+  type: latency-injection
+  injection_method: env-knob
+  parameters:
+    PAYMENT_LATENCY_MS: "1500"
+
+load:
+  orders: 5
+  settle_s: 30
+
+label:
+  root_cause: >
+    The Payment simulator was given a fixed 1500ms processing delay
+    (PAYMENT_LATENCY_MS=1500) before deciding each authorization. Authorizations
+    still succeeded, so orders reached CONFIRMED, but every payment.authorize hop
+    added ~1.5s of latency — inflating the Payment processing-duration histogram
+    and the overall checkout-saga trace while no service crashed.
+  affected_services: [payment, orders, notification, bff]
+  expected_symptoms:
+    - signal: metrics
+      service: payment
+      description: payment.duration p99 jumps to ~1.5s (from sub-second baseline)
+      where: 'histogram_quantile(0.99, sum by (le) (rate(payment_duration_seconds_bucket[1m])))'
+    - signal: traces
+      service: payment
+      description: >
+        the consume span for payment.authorize is ~1.5s longer; the whole saga
+        trace is correspondingly slower (still ending CONFIRMED)
+      where: '{ resource.service.name = "payment" && duration > 1s }'
+    - signal: logs
+      service: payment
+      description: >
+        "authorizing payment" -> "payment.authorized" log pair per order, the gap
+        reflecting the injected sleep; each carries the saga trace_id
+      where: '{service_name="payment"} | json'
+    - signal: events
+      service: payment
+      description: payment.authorized domain event still fires (no declines)
+      where: 'event.name = "payment.authorized"'
+  correlation:
+    resource_selector: 'service.namespace="shoeshop", deployment.environment="local"'
+    exemplar_metric: payment_duration_seconds
+  remediation: >
+    Cleared PAYMENT_LATENCY_MS and recreated the Payment container; processing
+    duration returned to baseline. Durable fix: a saga-level timeout/SLO on the
+    payment hop plus a latency alert (p99 > 1s) so slow authorizations page before
+    they pile up into a backlog.

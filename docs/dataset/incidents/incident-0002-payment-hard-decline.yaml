@@ -1,0 +1,75 @@
+# Captured incident label record (schema v0) — produced by
+# tools/incident-simulator. Real time_window + order ids from a live run
+# against the checkout stack; the static label fields come from the
+# scenario manifest scenarios/payment-hard-decline.yaml.
+
+schema_version: v0
+incident_id: incident-0002
+title: "Payment hard-decline \u2014 every authorization refused"
+scenario_id: payment-hard-decline
+severity: sev2
+time_window:
+  start: '2026-06-08T12:13:49Z'
+  end: '2026-06-08T12:14:28Z'
+fault:
+  type: payment-decline
+  target_service: payment
+  injection_method: env-knob
+  parameters:
+    PAYMENT_FAILURE_RATE: '1.0'
+root_cause: "The Payment simulator was configured to decline 100% of authorizations (PAYMENT_FAILURE_RATE=1.0),\
+  \ so every order's payment.authorize was answered with payment.declined (do_not_honor).\
+  \ The Orders saga treated each decline as terminal, ran compensation (released the inventory\
+  \ reservation), and moved the order to CANCELLED \u2014 no order in the window could reach\
+  \ CONFIRMED.\n"
+affected_services:
+- payment
+- orders
+- inventory
+- notification
+- bff
+signals_touched:
+  metrics: true
+  events: true
+  logs: true
+  traces: true
+expected_symptoms:
+- signal: events
+  service: payment
+  description: payment.declined domain event per order, reason=do_not_honor
+  where: event.name = "payment.declined"
+- signal: logs
+  service: payment
+  description: WARN "payment.declined" records, each carrying the saga trace_id
+  where: '{service_name="payment"} | json | level="warn"'
+- signal: metrics
+  service: payment
+  description: "decline rate at 100% \u2014 payment.requests with result=declined only"
+  where: sum(rate(payment_requests_total{result="declined"}[1m]))
+- signal: traces
+  service: orders
+  description: 'saga trace shows payment.declined -> compensation -> order CANCELLED (one
+    correlated trace across the NATS hops)
+
+    '
+  where: '{ resource.service.name = "orders" && span.order.status = "CANCELLED" }'
+correlation:
+  resource_selector: service.namespace="shoeshop", deployment.environment="local"
+  exemplar_metric: payment_duration_seconds
+  order_ids:
+  - 6bf795d6-a5b0-4107-9551-ea386a308c1c
+  - 1d289efb-d02c-4e7a-998d-6a140d7cdb83
+  - cfd71c35-f496-4a4e-b17a-cca2249a85d4
+  - dbfdbbb2-2683-46bb-8387-e46c59873b6d
+  - be429d48-7048-4e19-930c-e45c48394d1b
+  trace_ids: []
+remediation: 'Cleared PAYMENT_FAILURE_RATE (back to the authorize-all default) and recreated
+  the Payment container; subsequent checkouts authorized and confirmed normally. The orders
+  cancelled during the window require manual reconciliation. Durable fix: alert on a sustained
+  decline-rate spike and add a saga-level retry/backoff for transient declines before compensating.
+
+  '
+labeler: incident-simulator/v0
+notes: Captured run of scenario 'payment-hard-decline'. 5 order(s) placed against the seeded
+  shopper 11111111-1111-1111-1111-111111111111. trace_ids backfillable from Tempo by order.id
+  span attribute.
