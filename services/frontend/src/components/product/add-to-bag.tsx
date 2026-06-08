@@ -39,9 +39,9 @@ export function AddToBag({ productId }: { productId: string }) {
               key={s}
               onClick={() => setSize(s === size ? null : s)}
               className={cn(
-                "h-11 w-12 rounded-card border text-sm transition-colors",
+                "h-11 w-12 rounded-card border text-sm font-semibold transition-colors",
                 size === s
-                  ? "border-accent text-fg"
+                  ? "border-accent bg-accent text-accent-fg"
                   : "border-border text-muted hover:border-fg hover:text-fg",
               )}
             >

@@ -71,9 +71,6 @@ function FeaturedBig({
           />
         </div>
 
-        {/* Bottom scrim keeps the title legible over any imagery. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-surface via-surface/70 to-transparent" />
-
         <span className="absolute left-5 top-5 rounded-card bg-bg/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-fg backdrop-blur sm:left-7 sm:top-7">
           {product.tags[0]}
         </span>

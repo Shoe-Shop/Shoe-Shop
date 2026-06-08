@@ -5,11 +5,12 @@ import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 import { useCart } from "@/components/cart/cart-provider";
 import { useResolvedCart } from "@/components/cart/use-resolved-cart";
 import { PlaceOrderButton } from "@/components/cart/place-order-button";
+import { ShippingAddressForm } from "@/components/account/shipping-address-form";
 import { ProductMedia } from "@/components/product/product-media";
 import { formatPrice } from "@/lib/utils";
 
 export default function CartPage() {
-  const { add, remove, clear, loading } = useCart();
+  const { updateQty, remove, clear, loading } = useCart();
   const { items, subtotalCents, currency } = useResolvedCart();
 
   return (
@@ -43,7 +44,7 @@ export default function CartPage() {
                   className="relative h-28 w-28 shrink-0 overflow-hidden rounded-card border border-border bg-surface"
                 >
                   {line.product && (
-                    <ProductMedia product={line.product} sizes="112px" />
+                    <ProductMedia product={line.product} sizes="112px" className="h-full w-full" />
                   )}
                 </Link>
                 <div className="flex flex-1 flex-col">
@@ -69,11 +70,11 @@ export default function CartPage() {
                   </div>
                   <div className="mt-auto flex items-center justify-between pt-4">
                     <div className="flex items-center gap-4 rounded-card border border-border px-3 py-2">
-                      <button onClick={() => remove(line.productId)} aria-label="Decrease" className="text-fg/70 hover:text-fg">
+                      <button onClick={() => updateQty(line.productId, -1)} aria-label="Decrease" className="text-fg/70 hover:text-fg">
                         <Minus className="h-4 w-4" />
                       </button>
                       <span className="min-w-5 text-center text-sm text-fg">{line.quantity}</span>
-                      <button onClick={() => add(line.productId)} aria-label="Increase" className="text-fg/70 hover:text-fg">
+                      <button onClick={() => updateQty(line.productId, 1)} aria-label="Increase" className="text-fg/70 hover:text-fg">
                         <Plus className="h-4 w-4" />
                       </button>
                     </div>
@@ -106,6 +107,16 @@ export default function CartPage() {
               <span className="font-display text-lg text-fg">
                 {formatPrice(subtotalCents, currency)}
               </span>
+            </div>
+            {/* Shipping address — required before checkout (mock, saved locally). */}
+            <div className="mt-6 border-t border-border pt-6">
+              <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+                Shipping address
+              </h3>
+              <p className="mb-4 text-xs text-muted">
+                Where should we send it? Saved on this device.
+              </p>
+              <ShippingAddressForm />
             </div>
             {/* v0.3 checkout saga: place the order, then watch it resolve live. */}
             <div className="mt-6">

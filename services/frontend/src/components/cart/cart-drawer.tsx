@@ -14,7 +14,7 @@ import { formatPrice } from "@/lib/utils";
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 export function CartDrawer() {
-  const { cart, open, setOpen, add, remove, clear } = useCart();
+  const { cart, open, setOpen, updateQty, remove, clear } = useCart();
   const [products, setProducts] = useState<Record<string, Product>>({});
 
   // Resolve product details for the line items (cart stores only id + qty).
@@ -103,7 +103,7 @@ export function CartDrawer() {
                     return (
                       <li key={item.productId} className="flex gap-4 py-5">
                         <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-card border border-border bg-surface">
-                          {p && <ProductMedia product={p} sizes="80px" />}
+                          {p && <ProductMedia product={p} sizes="80px" className="h-full w-full" />}
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col">
                           <div className="flex justify-between gap-2">
@@ -126,7 +126,7 @@ export function CartDrawer() {
                           <div className="mt-auto flex items-center justify-between">
                             <div className="flex items-center gap-3 rounded-card border border-border px-2 py-1">
                               <button
-                                onClick={() => remove(item.productId)}
+                                onClick={() => updateQty(item.productId, -1)}
                                 aria-label="Decrease"
                                 className="text-fg/70 hover:text-fg"
                               >
@@ -136,7 +136,7 @@ export function CartDrawer() {
                                 {item.quantity}
                               </span>
                               <button
-                                onClick={() => add(item.productId)}
+                                onClick={() => updateQty(item.productId, 1)}
                                 aria-label="Increase"
                                 className="text-fg/70 hover:text-fg"
                               >

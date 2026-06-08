@@ -25,6 +25,8 @@ interface CartContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
   add: (productId: string, quantity?: number) => Promise<void>;
+  /** Change a line's quantity by a delta (e.g. +1/-1). Removes the line at 0. */
+  updateQty: (productId: string, delta: number) => Promise<void>;
   remove: (productId: string) => Promise<void>;
   clear: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -56,6 +58,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setOpen(true);
   }, []);
 
+  // Adjust quantity in place (server decrements via hincrby, removing at 0).
+  // Unlike `add`, it does not open the drawer — used by the +/- steppers.
+  const updateQty = useCallback(async (productId: string, delta: number) => {
+    setCart(await addCartItem(productId, delta));
+  }, []);
+
   const remove = useCallback(async (productId: string) => {
     setCart(await removeCartItem(productId));
   }, []);
@@ -70,8 +78,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo<CartContextValue>(
-    () => ({ cart, count, loading, open, setOpen, add, remove, clear, refresh }),
-    [cart, count, loading, open, add, remove, clear, refresh],
+    () => ({ cart, count, loading, open, setOpen, add, updateQty, remove, clear, refresh }),
+    [cart, count, loading, open, add, updateQty, remove, clear, refresh],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
