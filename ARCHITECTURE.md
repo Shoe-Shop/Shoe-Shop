@@ -6,7 +6,28 @@
 > fix one of them. The README is the public-facing pitch; this file is the
 > engineering ground truth.
 >
-> _Last updated: 2026-06-08 (**Notification (Go) shipped MELT-complete — the last v0.3
+> _Last updated: 2026-06-08 (**Storefront UX hardening + live account/orders (on top of the
+> v0.3 write path).** Three shopper-facing capabilities landed, each verified live in the
+> browser: (1) **BFF CORS** — the Next.js storefront calls the BFF **directly from the
+> browser** (origin `:9000` → `:9001`), so every client-side cart/checkout call silently
+> failed CORS preflight until `hono/cors` was added on `/api/*` (server-rendered pages had
+> masked the gap — "works in SSR, dead in the browser"). This was the real cause of the
+> always-empty bag. (2) **Account-gated checkout + real order history** — checkout now
+> verifies the shopper exists via `Users.GetUser` before creating an order (`401` otherwise),
+> and a new **`OrdersService.ListOrders(user_id)`** RPC (proto + Java `OrderRepository.findByUser`/
+> `OrdersGrpcService` + BFF `GET /api/users/:id/orders`) backs a live order-history list on the
+> account page. The storefront identity was unified onto the **seeded shopper id**
+> (`11111111-…`, Ada) — it previously used a throwaway `u-demo` that never joined the account,
+> so the account looked empty. (3) **Checkout feel** — a **required (mock, localStorage)
+> shipping address** gating Place-order and shown on the order page; product **imagery fixed**
+> in the bag/cart/order summary (ProductMedia needed `h-full w-full` to size the `fill` image);
+> a customer-narrative **order timeline** (Authorizing payment → Order confirmed → **Shipped**,
+> ending green with a tick + confetti); a **cart qty stepper fix** (`-`/`+` adjust quantity via
+> the cart's `hincrby`, removing only at 0, instead of `RemoveItem` deleting the whole line);
+> filled size-selector; and removed a light-theme hero scrim that washed out dark product
+> imagery. Auth remains the single demo identity (Zitadel deferred). The 9-of-11 MELT status
+> and the v0.3 write path are unchanged — this is storefront/BFF UX, not a new service.
+> Previously: **Notification (Go) shipped MELT-complete — the last v0.3
 > write-path service; 9 of 11 services MELT-complete, v0.3 write path COMPLETE (4/4)**.
 > Notification is a **pure NATS JetStream subscriber** (ADR-0003 §3/§7): a durable consumer
 > on the `ORDERS` stream filtered to the terminal lifecycle events `orders.confirmed`/

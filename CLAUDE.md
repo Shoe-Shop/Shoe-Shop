@@ -95,6 +95,21 @@ renders real profile). Verified end-to-end as one trace: `frontend → bff → u
 postgres` (asyncpg SELECT spans). Auth (Zitadel) still deferred — single demo
 identity until then.
 
+**Storefront UX + live account/orders (done, on top of v0.3 — browser-verified):**
+the account page now shows **real order history** via a new
+**`OrdersService.ListOrders(user_id)`** RPC (proto + Java `OrderRepository.findByUser` +
+BFF `GET /api/users/:id/orders`), plus a **required mock shipping address** (localStorage)
+that gates checkout and shows on the order page. **Checkout is account-gated** — BFF
+verifies `Users.GetUser` before `CreateOrder` (401 otherwise) — and the storefront identity
+was unified onto the **seeded shopper id** (was a throwaway `u-demo` that never joined the
+account). Critical fix: **BFF now sets CORS** (`hono/cors` on `/api/*`) — the storefront
+calls the BFF directly from the browser (`:9000`→`:9001`), so all client-side cart/checkout
+calls were silently CORS-blocked (server-rendered pages masked it; this was the
+always-empty-bag bug). Also: order timeline reworked to the shopper narrative
+(Authorizing payment → Order confirmed → **Shipped**, green tick + confetti), cart `-`/`+`
+stepper fixed (qty delta via `hincrby`, not whole-line delete), product images fixed in the
+bag/order summary, filled size selector. Auth still the single demo identity.
+
 **v0.3 write path (COMPLETE, 4 of 4 — ADR-0003):** orchestrated checkout saga over
 NATS JetStream (sync edge `frontend → bff → Orders.CreateOrder`, then async fulfilment).
 Streams `ORDERS`/`INVENTORY`/`PAYMENT`; JSON event envelope; `traceparent` in NATS
