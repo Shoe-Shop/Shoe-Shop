@@ -51,21 +51,12 @@ services:
     mem_limit: 320m
 
   # ── Notification — Go · NATS subscriber (stateless) ──────────────
-  notification:
-    <<: *stub
-    # build: { context: ../../services/notification }
-    container_name: shoeshop-notification
-    environment:
-      OTEL_SERVICE_NAME: notification
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
-      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
-      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
-    ports:
-      - "${NOTIFICATION_PORT:-9010}:80"
-    depends_on:
-      nats: { condition: service_started }
-      otel-lgtm: { condition: service_started }
-    mem_limit: 96m
+  # MOVED to compose.checkout.yaml (the v0.3 write-path overlay) alongside Orders/
+  # Inventory/Payment — it subscribes to the saga's terminal ORDERS events
+  # (orders.confirmed/orders.cancelled), so it belongs with the write path.
+  # `task up:full` folds in the checkout overlay, so Notification is still part of
+  # "all services". (Kept out of full to avoid the compose-merge gotcha: a stub here
+  # would self-conflict with the real build and append to its ports list.)
 
   # ── Zitadel — OIDC auth provider (Go, ~200MB). Manages its own
   #    database + role via start-from-init against shared Postgres. ──

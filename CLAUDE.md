@@ -9,28 +9,32 @@ A polyglot (6-language, ~11-service) e-commerce platform whose **real product is
 observability data** — correlated four-signal telemetry (**MELT**: Metrics,
 Events, Logs, Traces) plus a labeled, reproducible **incident corpus** to train a
 future AI SRE ("project 2"). The storefront is the vehicle, not the goal; see
-**[ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)**. Eight
+**[ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)**. Nine
 services are real today (**Frontend** Next.js 15, **Catalogue** Go, **BFF** TS,
-**Cart** Node, **Users** Python, **Inventory** Go, **Orders** Java, **Payment** Rust)
-+ the 5 infra containers; the rest are `traefik/whoami` stubs.
-**8 real services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
+**Cart** Node, **Users** Python, **Inventory** Go, **Orders** Java, **Payment** Rust,
+**Notification** Go) + the 5 infra containers; the rest (shipping, recommendation) are
+`traefik/whoami` stubs.
+**9 real services are MELT-complete** (Catalogue Go, Users Python, Cart Node,
 BFF TS, **Frontend** Next.js 15, **Inventory** Go, **Orders** Java/Spring, **Payment**
-Rust — four signals verified correlated) — **8 of 11 MELT-complete.** The v0.2-MELT
-retrofit phase is done and the **v0.3 NATS JetStream write path is in progress (3 of 4):
-Inventory (Go), Orders (Java/Spring), then Payment (Rust)**; only Notification (Go)
-remains. Orders is the **checkout-saga orchestrator** (ADR-0003): sync gRPC
-`CreateOrder`/`GetOrder` front door, then the async saga over NATS (owns `ORDERS`;
-reserve → authorize → confirm, with compensation). Payment is the **deterministic
-simulator** (ADR-0003 §6): NATS-only, consumes `payment.authorize`, decides
-authorize/decline by env-tunable rules (default authorize-all), publishes
-`payment.authorized`/`payment.declined`. All write-path services use the cross-cutting
-**NATS+OTel trace-propagation pattern** (W3C `traceparent` rides NATS message headers,
-so the whole async saga is ONE correlated trace — verified live: one Tempo trace
-`bff → orders → inventory → orders → payment → orders → CONFIRMED`). Exemplars: the two
-Go services **and Orders (Java, via the OTel agent)** emit metric **exemplars natively**;
-the three JS/TS services (Cart, BFF, Frontend) **and Payment (Rust)** get them from the
-bundle's Tempo metrics-generator, because OpenTelemetry-JS and `opentelemetry_sdk` 0.32
-(Rust) do not (both verified at the SDK source; §9). See ARCHITECTURE.md §2 / §9 + ADR-0003.
+Rust, **Notification** Go — four signals verified correlated) — **9 of 11 MELT-complete.**
+The v0.2-MELT retrofit phase is done and the **v0.3 NATS JetStream write path is COMPLETE
+(4/4): Inventory (Go), Orders (Java/Spring), Payment (Rust), Notification (Go)**. Orders is
+the **checkout-saga orchestrator** (ADR-0003): sync gRPC `CreateOrder`/`GetOrder` front
+door, then the async saga over NATS (owns `ORDERS`; reserve → authorize → confirm, with
+compensation). Payment is the **deterministic simulator** (ADR-0003 §6): NATS-only, consumes
+`payment.authorize`, decides authorize/decline by env-tunable rules (default authorize-all),
+publishes `payment.authorized`/`payment.declined`. Notification is the **pure fan-out
+subscriber** (ADR-0003 §3/§7): a durable consumer on the terminal `orders.confirmed`/
+`orders.cancelled` events that "sends" a notice (`notification.sent` Event) — no new
+transport, no datastore. All write-path services use the cross-cutting **NATS+OTel
+trace-propagation pattern** (W3C `traceparent` rides NATS message headers, so the whole
+async saga is ONE correlated trace — verified live: one Tempo trace `bff → orders →
+inventory → orders → payment → orders → CONFIRMED → notification`). Exemplars: the **three
+Go services** (Catalogue, Inventory, Notification) **and Orders (Java, via the OTel agent)**
+emit metric **exemplars natively**; the three JS/TS services (Cart, BFF, Frontend) **and
+Payment (Rust)** get them from the bundle's Tempo metrics-generator, because OpenTelemetry-JS
+and `opentelemetry_sdk` 0.32 (Rust) do not (both verified at the SDK source; §9). See
+ARCHITECTURE.md §2 / §9 + ADR-0003.
 
 ## Hard rules
 - **No hallucination.** Verify against the code/registry before claiming things.
@@ -53,8 +57,8 @@ bundle's Tempo metrics-generator, because OpenTelemetry-JS and `opentelemetry_sd
 
 ## Day-to-day
 - Bring up: `task up:core` (read path) · `task up:checkout` (read + v0.3 write
-  path: real Orders + Inventory) · status: `task ps` · logs: `task logs -- <svc>` ·
-  down: `task down`.
+  path: real Orders + Inventory + Payment + Notification) · status: `task ps` ·
+  logs: `task logs -- <svc>` · down: `task down`.
 - Codegen: `buf` (proto→Go) and `sqlc` (SQL→Go) via Docker; commit the output.
 - New services follow the **four-signal MELT standard** (ARCHITECTURE.md §9 +
   ADR-0002): a service ships only when Metrics + Events + Logs + Traces are
@@ -91,7 +95,7 @@ renders real profile). Verified end-to-end as one trace: `frontend → bff → u
 postgres` (asyncpg SELECT spans). Auth (Zitadel) still deferred — single demo
 identity until then.
 
-**v0.3 write path (in progress, 2 of 4 — ADR-0003):** orchestrated checkout saga over
+**v0.3 write path (COMPLETE, 4 of 4 — ADR-0003):** orchestrated checkout saga over
 NATS JetStream (sync edge `frontend → bff → Orders.CreateOrder`, then async fulfilment).
 Streams `ORDERS`/`INVENTORY`/`PAYMENT`; JSON event envelope; `traceparent` in NATS
 headers. The JVM-heavy write path is the opt-in **`checkout` overlay** —
@@ -119,9 +123,16 @@ each born MELT-complete:
   Async gotcha: handler runs in `FutureExt::with_context(cx)` so trace_id survives
   `.await` thread-hops. `services/payment/` (Cargo, Axum, async-nats, sqlx). See §9 +
   memory `payment-rust-otel-nats-sdk`.
-- ⬜ **Notification (Go)** — **next** (last v0.3 service): pure subscriber on terminal
-  order events (`orders.confirmed`/`orders.cancelled` on the `ORDERS` stream); emits
-  notification Events; no new transport. Reuses the proven Go MELT module set + NATS+OTel
-  spine.
+- ✅ **Notification (Go)** — done, MELT-complete, verified correlated. Pure subscriber on
+  terminal order events (`orders.confirmed`/`orders.cancelled` on the `ORDERS` stream);
+  durable consumer `notification-worker`; "sends" a notice via a `notification.sent` Event +
+  log — **no new transport, no datastore**. Reuses the Catalogue/Inventory Go telemetry
+  package verbatim (scope `shoeshop/notification`) + the **consume side** of the NATS+OTel
+  spine. RED over consumed messages (`notification_messages_total` /
+  `notification_process_duration_seconds_*` by `subject`/`result`), **native Go exemplars**.
+  Health = tiny `/healthz` + binary `healthcheck` subcommand. Verified live: the checkout
+  trace includes `consume orders.confirmed`/`orders.cancelled`; event/log/exemplar carry the
+  saga trace_id. `services/notification/` (Go, nats.go jetstream). See §9 + memory
+  `notification-go-nats-sdk`. **9 of 11 MELT-complete; v0.3 write path complete (4/4).**
 
 **Then:** incident/chaos framework — after enough real, MELT-complete services exist to break.

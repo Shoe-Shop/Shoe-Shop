@@ -154,3 +154,43 @@ services:
       retries: 5
       start_period: 20s
     mem_limit: 96m
+
+  # ── Notification — Go · NATS subscriber (stateless) ──────────────
+  # Real service (v0.3, MELT-complete) — the LAST v0.3 write-path service, closing
+  # the saga loop with fan-out. A PURE JetStream subscriber on the ORDERS stream's
+  # terminal lifecycle events (orders.confirmed / orders.cancelled): it "sends" a
+  # confirmation/cancellation notice — modeled as a notification.sent domain Event +
+  # a log — demonstrating fan-out off the saga (ADR-0003 §3/§7). No new transport,
+  # no datastore (no Postgres/gRPC/proto): it publishes nothing back. Born
+  # MELT-complete: reuses the proven Go MELT module set + the NATS+OTel
+  # traceparent-in-headers spine (inventory/telemetry/nats.go is the Go reference),
+  # so each notice joins the one checkout trace; Go emits metric exemplars natively
+  # (no JS/Rust gap). Build context is services/notification (no repo-root proto
+  # dependency, like Payment). The healthcheck runs the binary's own subcommand.
+  notification:
+    build:
+      context: ../../services/notification
+    image: shoeshop/notification:dev
+    restart: "no"
+    networks: [shoeshop]
+    container_name: shoeshop-notification
+    environment:
+      OTEL_SERVICE_NAME: notification
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=shoeshop,deployment.environment=local
+      NOTIFICATION_HEALTH_ADDR: "0.0.0.0:8080"
+      NATS_URL: "nats://nats:4222"
+    ports:
+      - "${NOTIFICATION_PORT:-9010}:8080"
+    depends_on:
+      nats: { condition: service_healthy }
+      otel-lgtm: { condition: service_started }
+    healthcheck:
+      # Distroless has no shell/curl — the binary's own subcommand probes /healthz.
+      test: ["CMD", "/notification", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 64m
