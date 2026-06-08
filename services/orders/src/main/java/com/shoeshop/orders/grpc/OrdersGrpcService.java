@@ -96,6 +96,20 @@ public class OrdersGrpcService extends OrdersServiceGrpc.OrdersServiceImplBase {
         }, () -> obs.onError(Status.NOT_FOUND.withDescription("order not found").asRuntimeException()));
     }
 
+    @Override
+    public void listOrders(ListOrdersRequest req, StreamObserver<ListOrdersResponse> obs) {
+        if (req.getUserId().isBlank()) {
+            obs.onError(Status.INVALID_ARGUMENT.withDescription("user_id is required").asRuntimeException());
+            return;
+        }
+        ListOrdersResponse.Builder b = ListOrdersResponse.newBuilder();
+        for (OrderRow o : orders.findByUser(req.getUserId())) {
+            b.addOrders(toProto(o));
+        }
+        obs.onNext(b.build());
+        obs.onCompleted();
+    }
+
     private static Order toProto(OrderRow o) {
         Order.Builder b = Order.newBuilder()
                 .setId(o.id().toString())

@@ -55,4 +55,6 @@ export const orders = {
     unary<{ order: Order }>('CreateOrder', req),
   getOrder: (req: { orderId: string }) =>
     unary<{ order: Order }>('GetOrder', req),
+  listOrders: (req: { userId: string }) =>
+    unary<{ orders: Order[] }>('ListOrders', req),
 };

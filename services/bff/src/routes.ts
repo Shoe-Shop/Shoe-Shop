@@ -1,6 +1,7 @@
 // BFF HTTP API. Aggregates downstream services for the frontend. Today it
 // fronts Catalogue and Cart; orders/etc. join as those services become real.
 import { Hono, type Context } from 'hono';
+import { cors } from 'hono/cors';
 import { catalogue, grpc } from './catalogue-client';
 import { cart } from './cart-client';
 import { users } from './users-client';
@@ -8,6 +9,34 @@ import { orders, type OrderItem } from './orders-client';
 import { log, event } from './telemetry';
 
 export const app = new Hono();
+
+// CORS — the frontend calls the BFF directly from the browser (a different
+// origin: storefront :9000 → bff :9001), so cross-origin GET/POST/DELETE and the
+// JSON-body preflight need CORS headers or the browser blocks every client-side
+// cart/checkout call (server-rendered pages fetch server-side over the Docker
+// network and are unaffected). Allow the local storefront origin(s); override
+// with BFF_CORS_ORIGINS (comma-separated) for other topologies. The default
+// function reflects any localhost/127.0.0.1 origin so a changed FRONTEND_PORT
+// still works in local dev. hono/cors answers the preflight OPTIONS itself.
+const corsOrigins = process.env.BFF_CORS_ORIGINS
+  ?.split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(
+  '/api/*',
+  cors({
+    origin:
+      corsOrigins && corsOrigins.length > 0
+        ? corsOrigins
+        : (origin) =>
+            /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+              ? origin
+              : undefined,
+    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['content-type'],
+    maxAge: 600,
+  }),
+);
 
 // Map a downstream gRPC error to an HTTP status + JSON body. Emitted inside the
 // request span, so the warn log carries the active trace_id/span_id (joins to the
@@ -144,6 +173,24 @@ app.get('/api/users/:id', async (c) => {
 app.post('/api/checkout/:userId', async (c) => {
   try {
     const userId = c.req.param('userId');
+
+    // Gate: only a real account can place an order. Verify the shopper exists in
+    // the Users service first (single demo identity until Zitadel lands). A
+    // missing/invalid id is an unauthenticated checkout, not a server error.
+    try {
+      await users.getUser({ id: userId });
+    } catch (e) {
+      const err = e as grpc.ServiceError;
+      if (
+        err.code === grpc.status.NOT_FOUND ||
+        err.code === grpc.status.INVALID_ARGUMENT
+      ) {
+        log.warn('checkout rejected — no such account', { 'user.id': userId });
+        return c.json({ error: 'Sign in to place an order' }, 401);
+      }
+      return grpcError(c, e);
+    }
+
     const { cart: basket } = await cart.getCart({ userId });
     const lines = basket?.items ?? [];
     if (lines.length === 0) {
@@ -182,6 +229,18 @@ app.get('/api/orders/:id', async (c) => {
   try {
     const res = await orders.getOrder({ orderId: c.req.param('id') });
     event('bff.order.viewed', { 'order.id': c.req.param('id'), 'order.status': res.order?.status });
+    return c.json(res);
+  } catch (e) {
+    return grpcError(c, e);
+  }
+});
+
+// Order history for the account page (frontend → bff → orders → postgres).
+app.get('/api/users/:userId/orders', async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const res = await orders.listOrders({ userId });
+    event('bff.orders.listed', { 'user.id': userId, count: res.orders?.length ?? 0 });
     return c.json(res);
   } catch (e) {
     return grpcError(c, e);

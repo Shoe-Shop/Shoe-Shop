@@ -1,6 +1,7 @@
 package com.shoeshop.orders.store;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -75,19 +76,52 @@ public class OrderRepository {
         if (header.isEmpty()) {
             return Optional.empty();
         }
-        var items = db.sql("""
+        OrderRow h = header.get();
+        return Optional.of(withItems(h, itemsOf(h.id())));
+    }
+
+    /**
+     * All orders for a shopper, most recent first, each with its lines — backs the
+     * account-page order history (ListOrders). N is small (one demo shopper), so a
+     * per-order item lookup is fine and keeps the mapping identical to findById.
+     */
+    @Transactional(readOnly = true)
+    public List<OrderRow> findByUser(String userId) {
+        List<OrderRow> headers = db.sql("""
+                SELECT id, user_id, status, total_cents, currency, created_at, updated_at
+                FROM orders WHERE user_id = :userId ORDER BY created_at DESC
+                """)
+                .param("userId", userId)
+                .query((rs, n) -> new OrderRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("user_id"),
+                        OrderState.valueOf(rs.getString("status")),
+                        rs.getLong("total_cents"),
+                        rs.getString("currency"),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant(),
+                        rs.getObject("updated_at", OffsetDateTime.class).toInstant(),
+                        java.util.List.of()))
+                .list();
+        return headers.stream().map(h -> withItems(h, itemsOf(h.id()))).toList();
+    }
+
+    /** Load the lines for one order. */
+    private List<OrderItemRow> itemsOf(UUID orderId) {
+        return db.sql("""
                 SELECT product_id, quantity, unit_price_cents
                 FROM order_items WHERE order_id = :id ORDER BY product_id
                 """)
-                .param("id", id)
+                .param("id", orderId)
                 .query((rs, n) -> new OrderItemRow(
                         rs.getString("product_id"),
                         rs.getInt("quantity"),
                         rs.getLong("unit_price_cents")))
                 .list();
-        OrderRow h = header.get();
-        return Optional.of(new OrderRow(h.id(), h.userId(), h.status(), h.totalCents(),
-                h.currency(), h.createdAt(), h.updatedAt(), items));
+    }
+
+    private static OrderRow withItems(OrderRow h, List<OrderItemRow> items) {
+        return new OrderRow(h.id(), h.userId(), h.status(), h.totalCents(),
+                h.currency(), h.createdAt(), h.updatedAt(), items);
     }
 
     /**
