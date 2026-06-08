@@ -73,3 +73,6 @@ export interface UserResponse {
 export interface OrderResponse {
   order: Order;
 }
+export interface OrdersResponse {
+  orders: Order[];
+}

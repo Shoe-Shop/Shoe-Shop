@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { useCart } from "./cart-provider";
+import { useShippingAddress } from "@/components/account/shipping-address";
 import { createCheckout, BffError } from "@/lib/api";
 
 const DEFAULT_CLASS =
@@ -11,18 +13,22 @@ const DEFAULT_CLASS =
 
 /**
  * Places the current bag as an order (v0.3 checkout saga) and routes to the live
- * order-status page. Shared by the cart page and the slide-over drawer. The bag is
- * cleared once the order is captured (status PENDING); the saga then resolves to
- * CONFIRMED/CANCELLED asynchronously, which the order page polls.
+ * order-status page. Shared by the cart page and the slide-over drawer. Gated on a
+ * saved shipping address (mock) so checkout feels real. The bag is cleared once the
+ * order is captured (status PENDING); the saga then resolves to CONFIRMED/CANCELLED
+ * asynchronously, which the order page polls.
  */
 export function PlaceOrderButton({ className }: { className?: string }) {
   const { count, clear, setOpen } = useCart();
+  const { hydrated, complete } = useShippingAddress();
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const blocked = !complete;
+
   const placeOrder = async () => {
-    if (submitting || count === 0) return;
+    if (submitting || count === 0 || blocked) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -45,7 +51,7 @@ export function PlaceOrderButton({ className }: { className?: string }) {
     <>
       <button
         onClick={placeOrder}
-        disabled={submitting || count === 0}
+        disabled={submitting || count === 0 || !hydrated || blocked}
         className={className ?? DEFAULT_CLASS}
       >
         {submitting ? (
@@ -56,6 +62,15 @@ export function PlaceOrderButton({ className }: { className?: string }) {
           "Place order"
         )}
       </button>
+      {hydrated && blocked && count > 0 && (
+        <p className="mt-2 text-center text-xs text-muted">
+          Add a{" "}
+          <Link href="/cart" className="text-accent underline-offset-2 hover:underline" onClick={() => setOpen(false)}>
+            shipping address
+          </Link>{" "}
+          to place your order.
+        </p>
+      )}
       {error && (
         <p className="mt-2 text-center text-xs text-red-500" role="alert">
           {error}

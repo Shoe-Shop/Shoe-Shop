@@ -6,6 +6,7 @@ import type {
   CartResponse,
   Order,
   OrderResponse,
+  OrdersResponse,
   Product,
   ProductResponse,
   ProductsResponse,
@@ -140,6 +141,15 @@ export async function getOrder(orderId: string): Promise<Order> {
     { cache: "no-store" },
   );
   return data.order;
+}
+
+// Order history for the account page (frontend → bff → orders → postgres).
+export async function listOrders(userId = DEMO_USER_ID): Promise<Order[]> {
+  const data = await getJson<OrdersResponse>(
+    `/api/users/${encodeURIComponent(userId)}/orders`,
+    { cache: "no-store" },
+  );
+  return data.orders ?? [];
 }
 
 // ── Account (Users) ──────────────────────────────────────────────────

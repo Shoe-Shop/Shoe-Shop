@@ -13,9 +13,14 @@ export function bffBaseUrl(): string {
   return typeof window === "undefined" ? BFF_SERVER_URL : BFF_BROWSER_URL;
 }
 
-// Placeholder identity for the (not-yet-wired) Users/auth service. The cart is
-// keyed by user id; until auth lands we operate as a single demo shopper.
-export const DEMO_USER_ID = "u-demo";
+// Identity for the (not-yet-wired) auth service. Until Zitadel lands we operate
+// as a single demo shopper — and it must be a REAL Users-service account, not a
+// placeholder, because checkout is gated on the account existing and the account
+// page lists this id's order history. This is the seeded shopper Ada Lovelace
+// (services/users/app/seed.sql); cart, checkout and order history all key off it.
+export const DEMO_USER_ID =
+  process.env.NEXT_PUBLIC_DEMO_USER_ID ??
+  "11111111-1111-1111-1111-111111111111";
 
 // Until auth lands, the account page resolves a single seeded demo shopper by
 // email (services/users/app/seed.sql). This is the "signed-in" identity the
