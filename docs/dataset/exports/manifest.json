@@ -1,7 +1,7 @@
 {
   "export_schema": "export-v0",
   "tool_version": "trace-labeler/v0",
-  "generated_at": "2026-06-09T09:49:28Z",
+  "generated_at": "2026-06-09T10:51:41Z",
   "bundle": {
     "tempo": "http://otel-lgtm:3200",
     "loki": "http://otel-lgtm:3100",
@@ -25,8 +25,8 @@
         "metric_series": 3,
         "exemplars": 0
       },
-      "extracted_at": "2026-06-09T09:49:23Z",
-      "sha256": "09405baf42b9d48b82c2117618a1b2511db7a4c3f9cc1088661dbc2004628aa5"
+      "extracted_at": "2026-06-09T10:51:32Z",
+      "sha256": "23cee7a2f26df90a2cfcc8346204bdcdb78d7ac267bd1a990b46353cef0d0967"
     },
     {
       "incident_id": "incident-0003",
@@ -44,8 +44,8 @@
         "metric_series": 3,
         "exemplars": 0
       },
-      "extracted_at": "2026-06-09T09:49:24Z",
-      "sha256": "275c5ce489e6ffbe8620e84fe42112e55d62fb5d9612c1365516cc7aeb035bd9"
+      "extracted_at": "2026-06-09T10:51:33Z",
+      "sha256": "0299180351b0b40b07a754cdcac0c1b613092be8e592b0c318e108319f9ed9e2"
     },
     {
       "incident_id": "incident-0004",
@@ -63,8 +63,8 @@
         "metric_series": 3,
         "exemplars": 1
       },
-      "extracted_at": "2026-06-09T09:49:25Z",
-      "sha256": "48023467282bd1fd989713366f08cdcefe9a5099eeaaa9a5ce18bd72aeb1a6a5"
+      "extracted_at": "2026-06-09T10:51:35Z",
+      "sha256": "fba645838fc1b006c0d50f27ccc5d7387da8da8267bb7ad97b15278047af9fb1"
     },
     {
       "incident_id": "incident-0005",
@@ -82,8 +82,8 @@
         "metric_series": 14,
         "exemplars": 19
       },
-      "extracted_at": "2026-06-09T09:49:26Z",
-      "sha256": "eb6f354c49cd95b14c578a0ffcfde3163c0c8e4f264c0794967ba689334b209a"
+      "extracted_at": "2026-06-09T10:51:39Z",
+      "sha256": "93a3b071b4a179cedebc83264fd6c31b887e61ddd786848b0bcae8bbda048fbf"
     },
     {
       "incident_id": "incident-0006",
@@ -94,21 +94,21 @@
         "end": "2026-06-09T05:49:30Z"
       },
       "counts": {
-        "traces": 40,
-        "spans": 179,
+        "traces": 30,
+        "spans": 133,
         "logs": 1000,
         "events": 750,
         "metric_series": 9,
         "exemplars": 0
       },
-      "extracted_at": "2026-06-09T09:49:28Z",
-      "sha256": "4c9f9d4a7f0d057cb1783e89baa9ee4409235a5474388084bc3801ca7ad8a262"
+      "extracted_at": "2026-06-09T10:51:41Z",
+      "sha256": "3b93b2f579691eea6ad85c4d59018f961456b07b217e7eb89539d869739eebab"
     }
   ],
   "totals": {
     "incidents": 5,
-    "traces": 78,
-    "spans": 992,
+    "traces": 68,
+    "spans": 946,
     "logs": 2201,
     "events": 1598,
     "metric_series": 32,

@@ -41,7 +41,7 @@ expected_symptoms:
 - signal: logs
   service: payment
   description: WARN "payment.declined" records, each carrying the saga trace_id
-  where: '{service_name="payment"} | json | level="warn"'
+  where: '{service_name="payment"} | severity_text="WARN"'
 - signal: metrics
   service: payment
   description: "decline rate at 100% \u2014 payment.requests with result=declined only"
@@ -52,7 +52,7 @@ expected_symptoms:
     correlated trace across the NATS hops)
 
     '
-  where: '{ resource.service.name = "orders" && span.order.status = "CANCELLED" }'
+  where: '{ resource.service.name = "orders" && name = "publish orders.cancelled" }'
 correlation:
   resource_selector: service.namespace="shoeshop", deployment.environment="local"
   exemplar_metric: payment_duration_seconds

@@ -33,7 +33,7 @@ expected_symptoms:
   service: notification
   description: notification.messages stops incrementing for the window (flat), then a catch-up
     burst on recovery
-  where: sum(rate(notification_messages_total[1m]))
+  where: sum(rate(notification_messages_total[5m]))
 - signal: events
   service: orders
   description: orders.confirmed events still emitted with NO matching notification.sent (producer
