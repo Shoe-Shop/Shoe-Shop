@@ -1,0 +1,117 @@
+{
+  "export_schema": "export-v0",
+  "tool_version": "trace-labeler/v0",
+  "generated_at": "2026-06-09T09:49:28Z",
+  "bundle": {
+    "tempo": "http://otel-lgtm:3200",
+    "loki": "http://otel-lgtm:3100",
+    "prometheus": "http://otel-lgtm:9090"
+  },
+  "dataset_file": "dataset.jsonl",
+  "incidents": [
+    {
+      "incident_id": "incident-0002",
+      "scenario_id": "payment-hard-decline",
+      "line": 1,
+      "time_window": {
+        "start": "2026-06-08T12:13:49Z",
+        "end": "2026-06-08T12:14:28Z"
+      },
+      "counts": {
+        "traces": 5,
+        "spans": 235,
+        "logs": 89,
+        "events": 45,
+        "metric_series": 3,
+        "exemplars": 0
+      },
+      "extracted_at": "2026-06-09T09:49:23Z",
+      "sha256": "09405baf42b9d48b82c2117618a1b2511db7a4c3f9cc1088661dbc2004628aa5"
+    },
+    {
+      "incident_id": "incident-0003",
+      "scenario_id": "payment-latency-spike",
+      "line": 2,
+      "time_window": {
+        "start": "2026-06-08T12:14:58Z",
+        "end": "2026-06-08T12:15:36Z"
+      },
+      "counts": {
+        "traces": 5,
+        "spans": 207,
+        "logs": 69,
+        "events": 35,
+        "metric_series": 3,
+        "exemplars": 0
+      },
+      "extracted_at": "2026-06-09T09:49:24Z",
+      "sha256": "275c5ce489e6ffbe8620e84fe42112e55d62fb5d9612c1365516cc7aeb035bd9"
+    },
+    {
+      "incident_id": "incident-0004",
+      "scenario_id": "notification-down",
+      "line": 3,
+      "time_window": {
+        "start": "2026-06-08T12:51:11Z",
+        "end": "2026-06-08T12:51:49Z"
+      },
+      "counts": {
+        "traces": 6,
+        "spans": 247,
+        "logs": 43,
+        "events": 18,
+        "metric_series": 3,
+        "exemplars": 1
+      },
+      "extracted_at": "2026-06-09T09:49:25Z",
+      "sha256": "48023467282bd1fd989713366f08cdcefe9a5099eeaaa9a5ce18bd72aeb1a6a5"
+    },
+    {
+      "incident_id": "incident-0005",
+      "scenario_id": "catalogue-db-throttle",
+      "line": 4,
+      "time_window": {
+        "start": "2026-06-09T05:43:03Z",
+        "end": "2026-06-09T05:44:43Z"
+      },
+      "counts": {
+        "traces": 22,
+        "spans": 124,
+        "logs": 1000,
+        "events": 750,
+        "metric_series": 14,
+        "exemplars": 19
+      },
+      "extracted_at": "2026-06-09T09:49:26Z",
+      "sha256": "eb6f354c49cd95b14c578a0ffcfde3163c0c8e4f264c0794967ba689334b209a"
+    },
+    {
+      "incident_id": "incident-0006",
+      "scenario_id": "checkout-load-spike",
+      "line": 5,
+      "time_window": {
+        "start": "2026-06-09T05:48:00Z",
+        "end": "2026-06-09T05:49:30Z"
+      },
+      "counts": {
+        "traces": 40,
+        "spans": 179,
+        "logs": 1000,
+        "events": 750,
+        "metric_series": 9,
+        "exemplars": 0
+      },
+      "extracted_at": "2026-06-09T09:49:28Z",
+      "sha256": "4c9f9d4a7f0d057cb1783e89baa9ee4409235a5474388084bc3801ca7ad8a262"
+    }
+  ],
+  "totals": {
+    "incidents": 5,
+    "traces": 78,
+    "spans": 992,
+    "logs": 2201,
+    "events": 1598,
+    "metric_series": 32,
+    "exemplars": 20
+  }
+}

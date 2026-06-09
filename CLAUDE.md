@@ -176,5 +176,29 @@ cleared). Window < 60s OTLP metric-export interval → for `env-knob` inject a s
 `OTEL_METRIC_EXPORT_INTERVAL` on the faulted container; for `resource-limit`/`load`
 the *observer* still exports at 60s so query its histograms with `[5m]` rate.
 
+**Dataset export pipeline (DONE):** `tools/trace-labeler/` (Python-in-container;
+`task dataset:export [-- <incident>]`) closes the loop from *labeled incident* to
+*trainable example*. For each record in `docs/dataset/incidents/` it extracts the
+correlated four-signal MELT slice bounded by the record's `time_window` from the LGTM
+bundle (Tempo `/api/search`+`/api/traces`, Loki `query_range`, Prometheus
+`query_range`+`query_exemplars` — all verified live, queried in-container on the
+`shoeshop` net) and writes **one self-contained JSONL example per incident** to
+`docs/dataset/exports/` (`dataset.jsonl` + sha256-provenanced `manifest.json`): input =
+the four signals, label = `root_cause`/`remediation`/`fault`. Resolves the deferred
+export boundary in `docs/dataset/README.md` (now unblocked). Verified across all five
+captured incidents (78 traces / 992 spans / 2201 logs / 1598 events / 32 metric series
+/ 20 exemplars). Key design (recorded per-example in `query_window`): **logs/events/
+traces bound strictly to the labeled window** (a pad dilutes signatures like
+notification-down's *absence* of `notification.sent` — the NATS-propagated recovery
+drain shares the saga `trace_id`); **metrics use a 120s pad** for the 60s
+export-interval gotcha. Findings the exporter surfaced: Tempo's search API strips
+leading zeros from trace ids → zero-pad to 32 hex so the trace↔log join matches Loki;
+executing each `expected_symptoms[].where` verbatim doubles as **live label validation**
+(flagged two of `0002`'s illustrative pointers as not resolving). Native exemplars only
+for Go services (per-stack policy §9) → robust trace anchor is `order.id → Tempo`. See
+memory `trace-labeler-export-v0`.
+
 **Then:** more service classes per method, SLO/error-budget framing, combined
-multi-fault scenarios for multi-signal correlation.
+multi-fault scenarios for multi-signal correlation; finish the 2 stub services
+(shipping, recommendation) + Zitadel auth; later a Parquet/retention decision once
+the corpus is large and `export-v0` stabilizes.

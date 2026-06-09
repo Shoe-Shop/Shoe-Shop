@@ -1,0 +1,28 @@
+# Dataset overlay — the trace-labeler (tools/trace-labeler).
+#
+# NOT part of any `up:*` profile: it carries `profiles: [dataset]` so it never
+# auto-starts, and is invoked on demand via `task dataset:export [-- <incident>]`
+# (docker compose run --rm). It reads the labeled incident records and queries
+# the LGTM bundle's backends directly over the `shoeshop` network, then writes
+# docs/dataset/exports/ into the mounted repo. Run it against an already-up stack
+# whose bundle still holds the incidents' telemetry (the windows in
+# docs/dataset/incidents/).
+
+services:
+  trace-labeler:
+    profiles: ["dataset"]
+    build:
+      context: ../../tools/trace-labeler
+    image: shoeshop/trace-labeler:dev
+    container_name: shoeshop-trace-labeler
+    networks: [shoeshop]
+    environment:
+      REPO_DIR: /work
+      # LGTM bundle backends (in-cluster ports; the bundle only publishes :3000).
+      TEMPO_URL: http://otel-lgtm:3200
+      LOKI_URL: http://otel-lgtm:3100
+      PROM_URL: http://otel-lgtm:9090
+    volumes:
+      # The repo: incident records to read, docs/dataset/exports to write into.
+      - ../../:/work
+    working_dir: /work

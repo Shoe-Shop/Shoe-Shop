@@ -24,6 +24,7 @@ vars:
   LEANJVM: -f deploy/compose/compose.lean-jvm.yaml
   PYRO: -f deploy/compose/compose.pyroscope.yaml
   CHAOS: -f deploy/compose/compose.chaos.yaml
+  DATASET: -f deploy/compose/compose.dataset.yaml
 
 tasks:
   default:
@@ -170,6 +171,12 @@ tasks:
     cmds:
       - 'echo "Available scenarios (tools/incident-simulator/scenarios/):"'
       - 'ls tools/incident-simulator/scenarios | sed "s/\\.yaml$//" | sed "s/^/  - /"'
+
+  dataset:export:
+    desc: "Export labeled incidents → trainable MELT dataset: task dataset:export [-- incident-0002] (needs `task up:checkout` running, bundle holding the windows)"
+    deps: [_ensure-env]
+    cmds:
+      - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} {{.CHECKOUT}} {{.DATASET}} run --rm --build trace-labeler {{.CLI_ARGS}}
 
   # ── Teardown ───────────────────────────────────────────────────────
   down:

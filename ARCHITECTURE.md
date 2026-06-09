@@ -1134,6 +1134,34 @@ OTLP metric-export interval, so for `env-knob` the simulator injects a short
 `load` the *observed* service still exports at 60s, so its histograms must be
 queried with a wide (`[5m]`) rate window over the ~80s window.
 
+**The dataset export pipeline has now landed** —
+[`tools/trace-labeler/`](tools/trace-labeler/), a Python-in-container tool driven by
+`task dataset:export`. It closes the loop from *labeled incident* to *trainable
+example*: for each record in [`docs/dataset/incidents/`](docs/dataset/incidents/) it
+extracts the correlated four-signal MELT slice bounded by the record's `time_window`
+from the LGTM bundle (Tempo `/api/search`+`/api/traces`, Loki `query_range`,
+Prometheus `query_range`+`query_exemplars` — all verified live) and writes **one
+self-contained JSONL training example per incident** to
+[`docs/dataset/exports/`](docs/dataset/exports/) (`dataset.jsonl` + a
+`sha256`-provenanced `manifest.json`). Input = the four signals; label = the
+record's `root_cause`/`remediation`/`fault`. This resolves the export boundary the
+dataset track deliberately deferred (now unblocked: 9/11 services MELT-complete +
+incidents `0002..0006`). Verified across all five captured incidents (78 traces /
+992 spans / 2201 logs / 1598 events / 32 metric series / 20 exemplars). Design
+choices, all recorded per-example in `query_window`: **logs/events/traces are bound
+strictly to the labeled window** (a pad would dilute signatures like
+`notification-down`'s defining *absence* of `notification.sent` — the NATS-propagated
+recovery drain carries the same `trace_id`), while **metrics use a 120s pad** for the
+60s export-interval gotcha. Two findings the exporter surfaced: trace ids must be
+zero-padded to 32 hex (Tempo's search API strips leading zeros; Loki keeps them) for
+the trace↔log join to match; and executing each record's `expected_symptoms[].where`
+pointer verbatim doubles as **live validation of the labels** (it flagged two of
+`0002`'s illustrative pointers — `| json | level="warn"` and a `span.order.status`
+selector — as not resolving against the bundle's actual label model). Native metric
+exemplars appear only for the Go services (catalogue 19, notification 1) and are
+absent for the Rust/JS-SDK services (§9 per-stack exemplar policy), so the robust
+trace anchor is `order.id → Tempo`, not exemplars. See memory `trace-labeler-export-v0`.
+
 ---
 
 ## 11. Roadmap / next steps
@@ -1210,8 +1238,16 @@ queried with a wide (`[5m]`) rate window over the ~80s window.
   four injection methods wired** (`env-knob`, `compose-stop`, `resource-limit`,
   `load`) across **five scenarios** mapping to Sock Shop incidents 3/6/5/8/4, each
   posting a Grafana region annotation and all verified correlated live (§10).
-  **Next:** more service classes per method, error-budget/SLO framing, and combined
-  (multi-fault) scenarios to exercise multi-signal correlation.
+- **Dataset export pipeline (done):** ✅ [`tools/trace-labeler/`](tools/trace-labeler/)
+  (`task dataset:export`) — extracts the correlated MELT slice for each labeled
+  incident window from the LGTM bundle into a versioned, git-committed JSONL dataset
+  ([`docs/dataset/exports/`](docs/dataset/exports/)): one self-contained training
+  example per incident (input = four signals, label = root_cause/remediation/fault).
+  Resolves the deferred export boundary; verified across `incident-0002..0006` (§10).
+  **Next:** more service classes per method, error-budget/SLO framing, combined
+  (multi-fault) scenarios for multi-signal correlation; finish the 2 stub services
+  (shipping, recommendation) + Zitadel auth; and (later) a Parquet format decision +
+  retention tooling once the corpus is large and `export-v0` stabilizes.
 
 **Recommended sequencing:** the MELT retrofit on the existing 4 services is now
 **complete** — telemetry debt was paid at its cheapest point (4 services, no drift),

@@ -1,9 +1,11 @@
 # Incident dataset & labeling track
 
-> **Status: DESIGN ONLY (design now, build later).** Per
+> **Status: ACTIVE — schema, captured incidents, AND export pipeline.** Per
 > [ADR-0002](../adr/ADR-0002-melt-four-signal-telemetry-as-product.md), this
-> directory defines the *shape* of the future incident corpus. It is the schema
-> and the rules — **not** an export pipeline, storage layer, or automation.
+> directory began as the *shape* of the future incident corpus (schema + rules).
+> It now also holds **captured incidents** ([`incidents/`](incidents/)) and the
+> **exported trainable dataset** ([`exports/`](exports/)), produced by the
+> [`tools/trace-labeler/`](../../tools/trace-labeler/) export pipeline.
 
 Shoe Shop's product is correlated four-signal telemetry (**MELT**) plus a
 **labeled, reproducible incident corpus**. That corpus is the training / eval
@@ -16,26 +18,31 @@ target; the correlated MELT inside its time window is the input.
 |------|---------|
 | [`incident-schema.md`](incident-schema.md) | The **label schema** — the versioned record that describes one incident (ground truth). |
 | [`correlation-contract.md`](correlation-contract.md) | The **correlation contract** — the join keys every service must emit so a labeled window resolves to all four signals. This is the *definition of done* the telemetry retrofit must satisfy. |
-| [`examples/incident-0001-cascading-timeout.yaml`](examples/incident-0001-cascading-timeout.yaml) | **One worked example** record, validating the schema is expressive enough. |
+| [`examples/incident-0001-cascading-timeout.yaml`](examples/incident-0001-cascading-timeout.yaml) | **One worked example** record (design fixture; uses the not-yet-wired `toxiproxy` method). |
+| [`incidents/`](incidents/) | **Captured** schema-v0 records from real incident-simulator runs (`incident-0002..0006`). |
+| [`exports/`](exports/) | The **exported trainable dataset** (`dataset.jsonl` + `manifest.json`) — one MELT training example per captured incident. |
 
-## The boundary (what is explicitly NOT in scope yet)
+## The pipeline (now built)
 
-Held deliberately to prevent the dataset track from becoming an open-ended
-data-engineering project:
+```
+scenario manifest ──► incident-simulator ──► incident record ──► trace-labeler ──► dataset.jsonl
+ (tools/incident-       inject·load·recover     (incidents/,        (export MELT       (exports/, one
+  simulator/)           ·label                   the label)          slice from bundle)  example/incident)
+```
 
-- ❌ No export / capture pipeline (no `tools/trace-labeler/` implementation).
-- ❌ No storage, retention, or schema-migration tooling.
-- ❌ No automated extraction of telemetry windows from the LGTM bundle.
-- ❌ No dataset format decision (Parquet / JSONL / etc.) beyond the label record.
+The previously-deferred boundary — *no export pipeline / no automated extraction
+/ no format decision* — is **resolved**:
+[`tools/trace-labeler/`](../../tools/trace-labeler/) extracts the correlated MELT
+slice for each labeled window from the LGTM bundle (Tempo + Loki + Prometheus)
+into versioned **JSONL** (format rationale in [`exports/`](exports/)). Run it with
+`task dataset:export`. Remaining out of scope (deliberately): retention /
+schema-migration tooling, and the Parquet decision (revisited when the corpus is
+large and the schema stable).
 
-These wait until **enough real services and real incidents exist** to make the
-export design concrete. Designing the schema and correlation rules *now* ensures
-that when incidents do run, they are recorded in a trainable shape from the first
-one — rather than generating ephemeral telemetry that is lost.
+## Why design-first (and why it paid off)
 
-## Why design-first
-
-The LGTM bundle is ephemeral local storage. If incidents run before the label
-schema and correlation keys exist, the telemetry they produce is unlabeled and
-unrecoverable. Fixing the schema early makes every future incident trainable by
-construction.
+The LGTM bundle is ephemeral local storage. Designing the label schema and
+correlation keys *before* running incidents ensured every captured incident was
+trainable **by construction** — so when the export pipeline landed, it extracted
+clean four-signal slices from records `0002..0006` without re-running anything.
+Fixing the schema early is exactly what made the late-built exporter trivial.
