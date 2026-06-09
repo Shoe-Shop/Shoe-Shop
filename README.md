@@ -2,494 +2,328 @@
 
 # 👟 Shoe Shop
 
-**A polyglot, cloud-native e-commerce platform — built as a hands-on playground for Observability, Chaos Engineering, and Reliability practice.**
+### A real, polyglot e-commerce platform that turns its own failures into a trainable observability dataset.
 
-*Six languages, one request path, telemetry-rich by default.*
+Six languages. Nine services. One correlated trace from the click to the confirmation —
+and a library of reproducible incidents that export themselves into machine-readable training data.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-7c3aed)](https://opentelemetry.io/)
-[![CNCF Stack](https://img.shields.io/badge/Stack-CNCF-1e40af)](https://www.cncf.io/)
-[![Status: v0.4 · MELT dataset generator](https://img.shields.io/badge/Status-v0.4_·_MELT_dataset_generator-brightgreen)]()
+[![Release](https://img.shields.io/badge/release-v0.4-brightgreen.svg)](https://github.com/Shoe-Shop/Shoe-Shop/releases)
+[![Languages](https://img.shields.io/badge/languages-6-orange.svg)](#-the-services)
+[![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-7c3aed.svg)](https://opentelemetry.io/)
+[![Signals](https://img.shields.io/badge/MELT-4_signals_correlated-1e40af.svg)](#-the-four-signal-melt-standard)
+[![Runs on](https://img.shields.io/badge/runs%20on-a%20laptop-success.svg)](#-quick-start)
 
 </div>
 
----
-
-## 📖 Table of Contents
-
-1. [Why Shoe Shop?](#-why-shoe-shop)
-2. [Project Vision](#-project-vision)
-3. [High-Level Architecture](#-high-level-architecture)
-4. [The Microservices Matrix](#-the-microservices-matrix)
-5. [Data Plane: Sync, Async & Storage](#-data-plane-sync-async--storage)
-6. [Observability Stack (LGTM+P)](#-observability-stack-lgtmp)
-7. [Chaos & Incident Engineering](#-chaos--incident-engineering)
-8. [UI/UX Approach](#-uiux-approach)
-9. [Repository Layout](#-repository-layout)
-10. [Local Development Promise](#-local-development-promise)
-11. [Roadmap](#-roadmap)
-12. [License & Contributing](#-license--contributing)
+<!--
+  ⤵ ADD A DEMO HERE before sharing this repo publicly.
+  A single looping GIF (storefront checkout on the left, the resulting correlated
+  trace in Grafana on the right) is the highest-leverage thing you can add — it is
+  what makes a visitor scroll instead of bounce. Drop it at docs/media/demo.gif and
+  uncomment:
+  <p align="center"><img src="docs/media/demo.gif" alt="Shoe Shop demo" width="900"></p>
+-->
 
 ---
 
-## 🎯 Why Shoe Shop?
+## What this is
 
-Cloud-native systems in 2026 are **polyglot, distributed, and observable-by-design** — yet the skills to operate them are usually learned on trivial sample apps that emit shallow telemetry and never fail in interesting ways. Shoe Shop is the opposite: a complete, runnable, production-shaped platform built around the problems that actually make distributed systems hard.
+**Shoe Shop is a complete, runnable online shoe store — browse, search, cart, checkout — built the way a real production system is built, and then instrumented so deeply that every request is fully observable across all nine services.**
 
-It is an open-source e-commerce platform engineered as a **sandbox for modern operations**:
+It is *polyglot on purpose*: the request path crosses TypeScript, Go, Node.js, Python, Java, and Rust, so distributed tracing has something genuinely hard to correlate — and you get an idiomatic, working OpenTelemetry reference in every one of those languages.
 
-- **Polyglot orchestration** — six languages cooperating across a single request path, so distributed tracing has something real to correlate.
-- **OpenTelemetry everywhere** — every service emits structured, correlated logs, metrics, traces, and profiles by default, following OTel semantic conventions.
-- **Failure as a first-class feature** — built-in, repeatable incident scenarios with known root causes, not just ad-hoc fault injection.
-- **Production-grade patterns** — Gateway API ingress, gRPC plus event-driven messaging, GitOps delivery, and signed multi-arch images.
+But the storefront is the vehicle, not the destination. Shoe Shop's real output is **data**:
 
-Nothing here is a toy. The telemetry is rich enough to debug with, to benchmark tools against, and to genuinely learn from.
+1. It emits **four correlated telemetry signals** — **M**etrics, **E**vents, **L**ogs, **T**races (**MELT**) — that all tie back to the same request.
+2. It can **break itself on demand**, through a library of labeled, reproducible failure scenarios with known root causes.
+3. It **exports** the telemetry from each failure into a **versioned, provenance-tracked dataset** — one self-contained training example per incident.
 
----
-
-## 🚀 Project Vision
-
-Shoe Shop has one goal: be the **e-commerce platform you learn real distributed-systems operations on.**
-
-Most sample shops are toys — a single language, a shallow request path, telemetry you can't actually debug with, and code that never fails in interesting ways. Shoe Shop is the opposite. It's a complete, runnable storefront — browse, search, cart, checkout — built the way a real production system is built, then instrumented so deeply that you can *see* everything it does.
-
-It's meant to be genuinely useful to anyone who wants to learn:
-
-- **Engineers** practising distributed tracing, log / metric / trace / profile correlation, and reading a whole system through a single pane of glass.
-- **Educators** who need a realistic, reproducible platform that stands up in minutes on a laptop.
-- **Tool authors** who want a rich, honest telemetry source to build against and benchmark.
-- **Operators-in-training** who want to live through real incidents — known root cause, real blast radius, observable symptoms — and practise diagnosing them under pressure.
-
-The guiding principle: **if it happens in a real production system, it should be reproducible here** — and observable enough that you can understand *what* broke, *where* it broke, and *why*.
+The result is something most sample applications can't give you: a steady, honest supply of *correlated four-signal telemetry around known, reproducible failures.*
 
 ---
 
-## 🏗 High-Level Architecture
+## The problems it solves
+
+Operating distributed systems is a skill, and skills need a realistic place to practise. The usual sample apps don't provide one:
+
+| The problem | How Shoe Shop addresses it |
+|---|---|
+| **Sample apps emit shallow, disconnected telemetry** you can't actually debug with. | Every service ships **four signals that are verified to correlate** — click a slow trace, jump to its logs, its metrics, its events, all by the same `trace_id`. |
+| **Real incidents are rare and scary to practise on.** | A catalogue of **reproducible, labeled incidents** — known root cause, real blast radius, observable symptom chain — that you replay on a laptop with one command. |
+| **AIOps / observability research needs realistic labeled telemetry, and it's hard to get.** | A **git-committed JSONL corpus**: each labeled incident exported as one example (input = the four signals; label = root cause / remediation / fault), with sha256 provenance. |
+| **Idiomatic OpenTelemetry per language is scattered across blog posts.** | **One repo, six languages**, each instrumented to the same explicit standard — a working reference you can copy. |
+
+**Who it's for:** engineers practising distributed tracing and signal correlation; educators who need a realistic system that stands up in minutes; tool authors and researchers who want an honest, correlated telemetry source to build and benchmark against; and anyone learning to read a whole distributed system through a single pane of glass.
+
+---
+
+## How it works — the product loop
+
+The whole project is one closed loop. The store generates telemetry; a fault is injected and labeled; the labeled window is exported into the dataset.
+
+```mermaid
+flowchart LR
+    A["🛍️ Storefront traffic<br/>browse · search · checkout"] -->|"OTLP: metrics, events,<br/>logs, traces"| B["📊 Correlated MELT<br/>in the LGTM bundle"]
+    C["💥 incident-simulator<br/>inject · load · recover · label"] -->|"perturbs the system"| A
+    C -->|"writes labeled window<br/>(root cause, blast radius)"| D["📁 docs/dataset/incidents/"]
+    B --> E["🏷️ trace-labeler<br/>extract the MELT slice<br/>bounded by the label window"]
+    D --> E
+    E -->|"one self-contained<br/>example per incident"| F["🎯 docs/dataset/exports/<br/>dataset.jsonl + manifest.json"]
+```
+
+This loop is **complete and verified end-to-end today.**
+
+---
+
+## Architecture
+
+A shopper's request fans out over **gRPC** for synchronous reads and an **orchestrated saga over NATS JetStream** for checkout. Every hop propagates the W3C `traceparent` — including across the async NATS messages — so the entire checkout, from the browser click to the confirmation notice, is **one correlated trace.**
 
 ```mermaid
 flowchart TB
     User([🧑 Shopper])
 
-    subgraph Edge["Edge / Ingress"]
-        GW[Envoy Gateway<br/>Gateway API]
+    subgraph FE["Presentation"]
+        Web["Frontend · Next.js 15<br/>React Server Components"]
+        BFF["BFF · Hono / TypeScript<br/>trace root · REST↔gRPC"]
     end
 
-    subgraph FE["Presentation Tier"]
-        Web[Next.js 15<br/>SSR + RSC]
-        BFF[Hono BFF<br/>Edge-ready]
+    subgraph Read["Read path (gRPC)"]
+        Cat["Catalogue · Go"]
+        Cart["Cart · Node.js"]
+        Usr["Users · Python"]
     end
 
-    subgraph Core["Core Domain Services"]
-        Cat[Catalogue<br/>Go]
-        Cart[Cart<br/>Node.js]
-        Order[Orders<br/>Java 21]
-        Pay[Payment<br/>Rust]
-        User2[Users / Auth<br/>Python]
-        Ship[Shipping<br/>Kotlin]
-        Inv[Inventory<br/>Go]
-        Rec[Recommendation<br/>Python + ML]
-        Notif[Notification<br/>Go]
+    subgraph Write["Checkout saga (NATS JetStream)"]
+        Ord["Orders · Java / Spring<br/>saga orchestrator"]
+        Inv["Inventory · Go"]
+        Pay["Payment · Rust"]
+        Ntf["Notification · Go"]
     end
 
-    subgraph Data["Data & Messaging"]
+    subgraph Data["Data & messaging"]
         PG[(PostgreSQL)]
         Redis[(Redis)]
-        Search[(Meilisearch)]
+        Meili[(Meilisearch)]
         NATS{{NATS JetStream}}
     end
 
-    subgraph Obs["Observability Plane"]
-        OTel[OTel Collector<br/>Gateway]
-        Loki[(Loki)]
-        Mimir[(Mimir)]
-        Tempo[(Tempo)]
-        Pyro[(Pyroscope)]
-        Graf[Grafana]
+    subgraph Obs["Observability — single grafana/otel-lgtm bundle"]
+        LGTM["Grafana · Prometheus<br/>Loki · Tempo"]
     end
 
-    subgraph Chaos["Chaos & Load"]
-        CM[Chaos Mesh]
-        Tox[Toxiproxy]
-        Inc[Incident Simulator]
-        K6[k6 Load Gen]
-    end
-
-    User --> GW --> Web --> BFF
-    BFF --> Cat & Cart & Order & User2 & Rec
-    Order --> Pay & Ship & Inv
-    Inv -.->|stock events| NATS
-    Order -.->|order events| NATS
-    NATS -.-> Notif & Ship & Rec
-    Cat --> PG & Search
+    User --> Web --> BFF
+    BFF -->|gRPC| Cat & Cart & Usr
+    BFF -->|"gRPC CreateOrder"| Ord
+    Ord -. "reserve" .-> NATS -.-> Inv
+    Inv -. "reserved" .-> NATS -.-> Ord
+    Ord -. "authorize" .-> NATS -.-> Pay
+    Pay -. "authorized / declined" .-> NATS -.-> Ord
+    Ord -. "confirmed / cancelled" .-> NATS -.-> Ntf
+    Cat --> PG & Meili
     Cart --> Redis
-    Order & User2 & Ship & Inv --> PG
+    Usr & Ord & Inv & Pay --> PG
 
-    Web & BFF & Cat & Cart & Order & Pay & User2 & Ship & Inv & Rec & Notif -.->|OTLP| OTel
-    OTel --> Loki & Mimir & Tempo & Pyro
-    Loki & Mimir & Tempo & Pyro --> Graf
-
-    CM -.->|injects faults| Core
-    Tox -.->|net chaos| Core
-    Inc -.->|scenario orchestration| CM & Tox
-    K6 -.->|synthetic traffic| GW
+    Web & BFF & Cat & Cart & Usr & Ord & Inv & Pay & Ntf -. "OTLP" .-> LGTM
 ```
 
-**Request lifecycle (golden path):**
+**Checkout saga (`reserve → authorize → confirm`, with compensation):** Orders is the orchestrator — a sync gRPC front door (`CreateOrder` / `GetOrder`), then an async state machine over NATS. Inventory reserves stock; Payment is a deterministic authorize/decline simulator; on success Orders confirms and Notification fans out a notice; on failure the saga compensates (releases the reservation) and cancels. A forced payment decline drives the whole flow to `CANCELLED` — visible as one trace.
 
-1. Shopper hits **Envoy Gateway** (Gateway API v1, HTTPRoute) which TLS-terminates and routes by host/path.
-2. **Next.js 15** renders via React Server Components, hydrating from the **Hono BFF** which aggregates calls to downstream services. The BFF is the trace-root for user-initiated traffic.
-3. Domain services communicate **synchronously via gRPC** (with REST shims at the edge) and **asynchronously via NATS JetStream** for event-driven flows (order placed → shipping reserved → notification sent).
-4. Every hop propagates **W3C `traceparent`** and emits OTLP to a per-node **OpenTelemetry Collector agent**, which forwards to a **gateway-tier Collector** for processing, tail-sampling, and fanout to Loki / Mimir / Tempo / Pyroscope.
-5. **Grafana** is the single pane of glass; dashboards, alerts, and SLOs are stored as code in this repo.
+> Depth lives in **[`ARCHITECTURE.md`](ARCHITECTURE.md)** (the engineering ground truth) and the decision records in **[`docs/adr/`](docs/adr/)**.
 
 ---
 
-## 🧬 The Microservices Matrix
+## The services
 
-Polyglot is deliberate: it forces the observability layer to prove cross-language correlation, and it gives readers idiomatic instrumentation examples in the languages they actually work in. Each service was picked for the language that best fits its workload — not for variety's sake.
+Each service was picked for the language that fits its workload — and each is instrumented to the same four-signal standard.
 
-| # | Service | Language / Framework | Runtime | Datastore | Why this stack |
-|---|---------|----------------------|---------|-----------|----------------|
-| 1 | **Frontend** | TypeScript · Next.js 15 (App Router) | Node.js 22 / Edge | — | React Server Components and streaming SSR are the modern default; deep ecosystem; renders fast on cold caches. |
-| 2 | **BFF** | TypeScript · Hono | Node.js 22 / Bun-compatible | — | Tiny, Web-Standard `fetch` API, edge-portable, excellent OTel support. Acts as trace root + auth boundary. |
-| 3 | **Catalogue** | Go · gRPC + `sqlc` | Go 1.25 | PostgreSQL + Meilisearch | Read-heavy, low-latency. Go's GC pauses are negligible at this scale; `sqlc` keeps queries typesafe. |
-| 4 | **Cart** | Node.js · gRPC | Node.js 22 | Redis (primary store) | Session-affine, mutation-heavy, short-lived data. Redis is the right shape; a lean gRPC server (no web framework) keeps the surface small and OTel-native. |
-| 5 | **Orders** | Java 21 · Spring Boot 3.3 (virtual threads) | JVM 21 | PostgreSQL | Classic enterprise workload — transactions, sagas, audit. Virtual threads remove the thread-per-request cost without rewriting the model. Also showcases JVM-side observability. |
-| 6 | **Payment** | Rust · Axum + `sqlx` | Native | PostgreSQL | Security- and correctness-critical mock. Rust forces explicit error paths and gives us a `no_std`-adjacent footprint to demo low-resource scenarios. |
-| 7 | **Users / Auth** | Python · FastAPI | Python 3.12 | PostgreSQL + **Zitadel** (OIDC) | FastAPI is the most idiomatic async Python web stack; auth is delegated to **Zitadel** — a Go-based OIDC provider (~200 MB) chosen over Keycloak's ~500 MB JVM for the local RAM budget — so we demo real SSO traces without the footprint. Pluggable behind standard OIDC; Keycloak remains a documented swap. |
-| 8 | **Shipping** | Kotlin · Ktor (coroutines) | JVM 21 | PostgreSQL | Integration-style service (calls fake carrier APIs). Showcases the *other* major JVM language and structured concurrency. |
-| 9 | **Inventory** | Go · gRPC-first | Go 1.25 | PostgreSQL | High-throughput stock reservations. gRPC streaming demonstrates non-HTTP tracing. |
-| 10 | **Recommendation** | Python · FastAPI + ONNX Runtime | Python 3.12 | PostgreSQL (read-replica) | Realistic AI-inference workload — tail-latency heavy, GPU-optional. ML services have distinctive, tail-latency-driven failure modes worth observing. |
-| 11 | **Notification** | Go · NATS subscriber | Go 1.25 | (stateless) | Fan-out worker — email/SMS/webhook mocks. Demonstrates async-only services in traces. |
+| Service | Language / Framework | Transport | Datastore | Role |
+|---|---|---|---|---|
+| **Frontend** | TypeScript · Next.js 15 (App Router, React 19) | HTTP | — | The NEXUS storefront: home · shop · product · cart · checkout · account |
+| **BFF** | TypeScript · Hono | REST ↔ gRPC | — | Aggregation + trace root for browser traffic |
+| **Catalogue** | Go · gRPC + `sqlc` | gRPC | PostgreSQL + Meilisearch | Read-heavy product catalogue & search |
+| **Cart** | Node.js · gRPC | gRPC | Redis | Mutation-heavy, session-affine cart |
+| **Users** | Python · FastAPI + gRPC | gRPC | PostgreSQL | Shopper profiles / accounts |
+| **Orders** | Java 21 · Spring Boot | gRPC + NATS | PostgreSQL | Checkout-saga orchestrator |
+| **Inventory** | Go · gRPC + NATS | gRPC + NATS | PostgreSQL | Stock reads + saga reserve/release |
+| **Payment** | Rust · Axum + NATS | NATS only | PostgreSQL | Deterministic authorize/decline simulator |
+| **Notification** | Go · NATS subscriber | NATS only | — | Pure fan-out on terminal order events |
 
-### Languages summary
-**6 languages**: TypeScript, Go, Java, Rust, Python, Kotlin. Enough to make cross-language tracing genuinely interesting; few enough that one engineer can reason about the whole repo.
+**Languages:** TypeScript, Go, Node.js, Python, Java, Rust — enough to make cross-language tracing genuinely interesting, few enough that one person can reason about the whole repo.
 
-### Deliberately *excluded*
-- **.NET / C#** — not because it's a bad fit, but to keep the matrix lean. Easy community contribution later.
-- **Microservices for everything** — no separate "email service" + "SMS service"; one Notification worker handles both. Resist over-decomposition.
+**Status:** these **9 services are real and four-signal complete** (verified correlated live in Grafana). Two further services (shipping, recommendation) and full OIDC auth are stubbed placeholders, parked on the roadmap below.
 
 ---
 
-## 🔌 Data Plane: Sync, Async & Storage
+## The four-signal (MELT) standard
 
-### Inter-service protocols
+A service is not considered "done" here until **all four signals are emitted *and verified to correlate*** — not traces alone. That bar is the project's core discipline.
 
-| Protocol | Where | Why |
-|----------|-------|-----|
-| **gRPC** (Protobuf) | Service ↔ service | Strong contracts, generated clients in every language, native streaming, OTel-instrumented out of the box. |
-| **REST/JSON** | BFF ↔ Frontend, external webhooks | Browser-friendly, debuggable, no codegen friction on the edge. |
-| **NATS JetStream** | Event-driven flows | Modern, lightweight (single binary), at-least-once with consumer ack, OTel propagation supported. Chosen for footprint and replayable streams; Redpanda is a documented drop-in for teams that want Kafka semantics. |
+- **Metrics** — RED (rate / errors / duration) per service, with trace **exemplars** where the SDK supports them.
+- **Events** — structured domain events (`payment.declined`, `orders.confirmed`, `notification.sent`) carrying the saga `trace_id`.
+- **Logs** — structured, every line stamped with `trace_id` / `span_id`.
+- **Traces** — one span tree per request, propagated across both gRPC **and** NATS messages.
 
-### Schema strategy
-- **`/proto`** is the single source of truth for service contracts.
-- Buf for linting, breaking-change detection, and codegen.
-- **AsyncAPI 3** documents every NATS subject.
-
-### Datastores
-
-| Store | Used by | Why |
-|-------|---------|-----|
-| **PostgreSQL 16** | Catalogue, Orders, Payment, Users, Shipping, Inventory | One battle-tested OLTP store. Per-service schema or per-service database — not "shared DB" anti-pattern. |
-| **Redis 7** | Cart, rate-limiting | Cart is genuinely K/V; Redis is the right tool. |
-| **Meilisearch** | Catalogue search | Open-source, OTel-instrumentable, much simpler ops than Elasticsearch for this workload. Typesense is a drop-in alternative. |
-| **NATS JetStream** | Event bus + KV for ephemeral state | See above. |
-
-Every datastore runs in-cluster for hermetic local dev. No cloud SaaS dependencies are required to run the full stack.
+The full Definition of Done, the per-language instrumentation notes, and the per-stack exemplar policy are in [`ARCHITECTURE.md` §9](ARCHITECTURE.md).
 
 ---
 
-## 🔭 Observability Stack (LGTM+P)
+## The incident corpus
 
-Every choice below is 100% free and open-source. No "free tier" lock-in.
+Failures here are **never random pod-killing.** The simulator runs one labeled scenario end-to-end — `manifest → inject → load → recover → label` — against the live checkout stack, writes a schema-v0 record (real `time_window`, root cause, affected services, order ids) to [`docs/dataset/incidents/`](docs/dataset/incidents/), and posts a Grafana region annotation for the window.
 
-```mermaid
-flowchart LR
-    Svc[Polyglot Services] -->|OTLP/gRPC| Agent[OTel Collector<br/>Agent · DaemonSet]
-    Beyla[Grafana Beyla<br/>eBPF auto-instrumentation] -->|OTLP| Agent
-    Agent -->|OTLP| GW[OTel Collector<br/>Gateway · Deployment]
-    GW -->|logs| Loki
-    GW -->|metrics| Mimir
-    GW -->|traces| Tempo
-    GW -->|profiles| Pyroscope
-    Loki & Mimir & Tempo & Pyroscope --> Grafana
-    Grafana --> Alerts[Alertmanager]
-```
+Five scenarios ship today, each **verified correlated against live telemetry**, across all four Compose-native injection methods:
 
-### The pillars
-
-| Signal | Tool | Why this and not the alternative |
-|--------|------|-----------------------------------|
-| **Logs** | **Grafana Loki** | Label-based indexing, cheap at rest, native Grafana integration. Trivial trace↔log correlation via `trace_id` label. |
-| **Metrics** | **Grafana Mimir** (Prometheus-compatible) | Horizontally scalable Prometheus. Single binary for local; multi-tenant at scale. |
-| **Traces** | **Grafana Tempo** | Object-store backed (cheap), full-fidelity (no sampling required at storage), `TraceQL` is genuinely good. |
-| **Profiles** | **Grafana Pyroscope** | Continuous profiling closes the "I see the slow trace, now show me the CPU" loop. |
-| **UI / Alerts** | **Grafana OSS 11** + Alertmanager | Dashboards-as-code via Grafonnet / Foundation SDK. Alerts as code via Prometheus rules. |
-
-> **⚠️ Local vs. cluster footprint.** The table above describes the **cluster/prod** topology. **Locally**, this entire stack is collapsed into the single **`grafana/otel-lgtm`** image (Grafana + Prometheus + Loki + Tempo, ~400 MB) plus **one** OTel Collector. **Pyroscope** runs as an **opt-in** sidecar container, toggled on only when profiling memory-leak or saturation scenarios. Separate **Mimir**, the two-tier agent+gateway Collector, and standalone Loki/Tempo are reserved for the cluster path. See [Local Development Promise](#-local-development-promise).
-
-### Instrumentation strategy
-- **OpenTelemetry SDKs** in every service — no vendor agents.
-- **Auto-instrumentation** wherever it exists (Java agent, Node.js zero-code, Python `opentelemetry-instrument`).
-- **Manual spans** for business operations (`order.checkout`, `payment.authorize`) with semantic-convention attributes.
-- **Grafana Beyla** as an eBPF-based safety net — captures HTTP/gRPC golden signals from any language even if SDK instrumentation regresses — guaranteeing golden-signal coverage even where hand-written instrumentation is missing.
-- **Logs are structured JSON** (slog / pino / structlog / logback-json), always carrying `trace_id` and `span_id`.
-
-### SLOs as code
-- **Sloth** to generate Prometheus recording + alerting rules from human-readable SLO YAML.
-- Every service ships with a baseline SLO (e.g. Catalogue: 99.9% of `GET /products` < 200ms over 30d).
-- SLO burn-rate alerts feed Alertmanager → routed to the Incident Simulator's annotation store, so you can see exactly "which incident triggered which alert."
-
-### Service mesh observability (optional layer)
-**Istio Ambient Mode** (sidecar-less) is offered as an opt-in overlay for users who want L7 mesh telemetry without sidecar overhead. **Linkerd** is the documented alternative. Neither is required for the core experience.
-
----
-
-## 💥 Chaos & Incident Engineering
-
-Chaos in Shoe Shop is **never random pod-killing.** The platform orchestrates realistic, labeled, repeatable incident scenarios — each with a known root cause and an observable symptom chain — so failures are something you can study, reproduce, and learn from.
-
-### The three layers of chaos
-
-| Layer | Tool | What it does |
-|-------|------|--------------|
-| **Infra** | **Chaos Mesh** (CNCF Incubating) | Pod kills, network partition, CPU/memory stress, disk I/O, time skew, DNS chaos. Kubernetes-native CRDs. |
-| **Network** | **Toxiproxy** sidecars | Per-connection latency injection, bandwidth throttling, slow-close. Surgical, in-process. |
-| **Application** | **Feature-flag fault injection** (OpenFeature) | In-code "if flag set, return 500 / sleep 2s / leak 100MB." Models bugs, not infra failures. |
-
-### The Incident Simulator (shipped — v0)
-`tools/incident-simulator/` is a **Python-in-container** orchestrator (`task chaos:run -- <scenario>`) that runs one labeled scenario end-to-end — `manifest → inject → load → recover → label` — against the running checkout stack, using **Compose-native fault injection** (env-knob, compose-stop, resource-limit, load). It writes a schema-v0 `(time_window, root_cause, …)` record to `docs/dataset/incidents/` and posts a Grafana region annotation per window.
-
-> The three-layer chaos design above (Chaos Mesh / Toxiproxy / feature-flags) is the **cluster-path blueprint**; the shipped v0 deliberately uses Compose-native injection so it runs on a laptop. Toxiproxy network faults are reserved in the schema but await a sidecar.
-
-**Five scenarios shipped, all verified correlated live** (≈ Sock Shop incidents 3/6/5/8/4):
-
-| Scenario | Method | Fault → symptom |
-|----------|--------|-----------------|
-| `payment-hard-decline` | env-knob | `PAYMENT_FAILURE_RATE=1.0` → every order declined → CANCELLED via saga compensation |
-| `payment-latency-spike` | env-knob | `PAYMENT_LATENCY_MS=1500` → slow authorizations, orders still CONFIRM |
-| `notification-down` | compose-stop | orders CONFIRM but no `notification.sent`; durable consumer drains backlog on recovery |
-| `catalogue-db-throttle` | resource-limit | Postgres → 0.1 CPU under browse load → catalogue p99 ≈ 10× baseline |
+| Scenario | Method | Fault → observable symptom |
+|---|---|---|
+| `payment-hard-decline` | env-knob | every authorization refused → all orders `CANCELLED` via saga compensation |
+| `payment-latency-spike` | env-knob | slow authorizations (~1.5 s) → orders still `CONFIRM`, latency visible |
+| `notification-down` | compose-stop | orders `CONFIRM` but no `notification.sent`; durable consumer drains the backlog on recovery |
+| `catalogue-db-throttle` | resource-limit | Postgres throttled under browse load → catalogue p99 ≈ 10× baseline, no crash |
 | `checkout-load-spike` | load | concurrent browse/search burst → read-path latency climbs, system stays up |
 
-### The dataset export pipeline (shipped — the product)
-`tools/trace-labeler/` (`task dataset:export`) turns each labeled incident into a **trainable example**: it extracts the correlated four-signal (MELT) slice bounded by the record's `time_window` from the LGTM bundle and writes one self-contained JSONL line per incident to `docs/dataset/exports/` (`dataset.jsonl` + a sha256-provenanced `manifest.json`). Input = the four signals; label = `root_cause` / `remediation` / `fault`. **This is the corpus the project exists to produce** — the supervised training data for the future AI SRE ([ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)).
-
-### Load generation
-- **k6** for HTTP/gRPC load with realistic distributions (Pareto for cart sizes, Poisson for arrivals).
-- A `tools/load-generator/` profile per persona: *browser*, *bargain-hunter*, *checkout-abandoner*, *bot*.
+```bash
+task chaos:list                          # see available scenarios
+task chaos:run -- payment-hard-decline   # inject, load, recover, label (needs the checkout stack up)
+```
 
 ---
 
-## 🎨 UI/UX Approach
+## The dataset
 
-The frontend deserves the same rigor as the backend. A storefront that *looks* like a demo undermines the project's credibility.
+`trace-labeler` closes the loop: for each labeled incident it extracts the correlated four-signal slice bounded by the record's `time_window` from the running observability bundle, and writes **one self-contained JSONL line per incident** to [`docs/dataset/exports/`](docs/dataset/exports/) — `dataset.jsonl` plus a sha256-provenanced `manifest.json`.
 
-### Stack
-- **Next.js 15** (App Router, React Server Components, Partial Prerendering)
-- **TypeScript** in strict mode
-- **Tailwind CSS 4** for utility-first styling
-- **shadcn/ui** for accessible, themeable primitives (Radix under the hood)
-- **Motion** (formerly Framer Motion) for tasteful micro-interactions
-- **next-intl** for i18n scaffolding (even if we ship English first)
+```bash
+task dataset:export                 # export every labeled incident
+task dataset:export -- incident-0002
+```
 
-### Design north star
-Think **Allbirds / On / Veja** — clean editorial layout, generous whitespace, large product photography, no skeuomorphic gradients, no stock-bootstrap aesthetic. Dark mode first-class.
+**The current corpus** ([`manifest.json`](docs/dataset/exports/manifest.json)):
 
-### Why this matters beyond aesthetics
-- **Realistic frontend telemetry**: SSR + RSC + Client Components produce a non-trivial trace shape — server-side fetch waterfalls, client-side hydration, partial revalidation — that simpler server-rendered UIs never generate.
-- **Real Core Web Vitals data**: We ship `web-vitals` → OTel → Grafana, so you can correlate backend incidents with frontend UX degradation.
-- **Accessible by default**: WCAG 2.2 AA. Lighthouse a11y score ≥ 95 is a CI gate.
+| Incidents | Traces | Spans | Logs | Events | Metric series | Exemplars |
+|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| **5** | 68 | 946 | 2,201 | 1,598 | 32 | 20 |
+
+Each example carries the input signals and the ground-truth label together:
+
+```jsonc
+{
+  "incident_id": "incident-0002",
+  "scenario_id": "payment-hard-decline",
+  "label": {
+    "root_cause": "Payment configured to decline 100% of authorizations; the saga ran compensation and moved every order to CANCELLED…",
+    "remediation": "Cleared the decline knob and recreated Payment; durable fix: alert on a sustained decline-rate spike…",
+    "fault": { "type": "payment-decline", "target_service": "payment", "injection_method": "env-knob" },
+    "affected_services": ["payment", "orders", "inventory", "notification", "bff"]
+  },
+  "signals": {
+    "traces":  [ /* full span trees across gRPC + NATS */ ],
+    "logs":    [ /* trace_id-stamped, structured */ ],
+    "events":  [ /* payment.declined, orders.cancelled, … */ ],
+    "metrics": { "series": [ /* RED histograms */ ], "exemplars": [ /* metric↔trace links */ ] }
+  },
+  "evidence": { "symptoms": [ /* each label pointer executed live against the bundle */ ] }
+}
+```
+
+Every symptom pointer in a label is **executed verbatim against the live telemetry at export time**, so the dataset doubles as its own validation: a label that doesn't resolve is a label that gets fixed.
 
 ---
 
-## 📁 Repository Layout
+## Quick start
 
-A strict, language-agnostic monorepo. Every service is self-contained; shared concerns live in `libs/` per language.
+**Prerequisites:** Docker Desktop (WSL2 backend on Windows) and the [`task`](https://taskfile.dev) CLI. Everything runs in containers — no language toolchains needed on your host.
+
+```bash
+git clone https://github.com/Shoe-Shop/Shoe-Shop.git
+cd Shoe-Shop
+
+task up:core      # creates .env, builds images, starts the storefront +
+                  # the 5 read-path services + Grafana. First run builds; later runs are fast.
+```
+
+Then open:
+
+| | URL |
+|---|---|
+| 🛍️ **Storefront** | http://localhost:9000 |
+| 📊 **Grafana** (the single pane of glass) | http://localhost:3000 |
+
+To run the full checkout saga (Orders + Inventory + Payment + Notification over NATS):
+
+```bash
+task up:checkout  # read path + the v0.3 write path
+```
+
+> **The RAM dial.** Shoe Shop is resource-first — it targets a 16 GB laptop with Docker capped at ~8 GB. `core` idles light (~0.9 GB); the JVM-heavy write path is the opt-in `checkout` overlay so daily dev stays lean.
+
+Everyday commands:
+
+```bash
+task ps                 # container status
+task logs -- catalogue  # tail one service
+task down               # stop (keeps data volumes)
+task --list             # all tasks
+```
+
+---
+
+## Repository layout
 
 ```
-shoe-shop/
-├── README.md
-├── LICENSE                              # Apache 2.0
-├── CODE_OF_CONDUCT.md
-├── CONTRIBUTING.md
-├── SECURITY.md
-├── Taskfile.yml                         # Top-level task runner (go-task)
-│
-├── .github/
-│   ├── workflows/                       # CI: build, test, scan, SBOM, sign
-│   ├── ISSUE_TEMPLATE/
-│   └── PULL_REQUEST_TEMPLATE.md
-│
-├── docs/
-│   ├── architecture/                    # Component diagrams, data flows
-│   ├── observability/                   # Dashboard catalogue, semconv guide
-│   ├── chaos/                           # Scenario catalogue & runbooks
-│   ├── adr/                             # Architecture Decision Records
-│   └── runbooks/                        # Per-service runbooks (diagnosis playbooks)
-│
-├── proto/                               # Single source of truth: gRPC + AsyncAPI
-│   ├── buf.yaml
-│   ├── catalogue/v1/
-│   ├── orders/v1/
-│   ├── payment/v1/
-│   └── ...
-│
+Shoe-Shop/
+├── ARCHITECTURE.md                # engineering ground truth (status, decisions, conventions)
+├── CLAUDE.md                      # session bootstrap / short-form status
+├── proto/                         # gRPC contracts (Buf) + generated stubs
+│   ├── catalogue/ cart/ users/ inventory/ orders/   (Payment is NATS-only — no proto)
+│   └── gen/
 ├── services/
-│   ├── frontend/                        # Next.js 15 + TS
-│   ├── bff/                             # Hono BFF (TS)
-│   ├── catalogue/                       # Go
-│   ├── cart/                            # Node.js · gRPC
-│   ├── orders/                          # Java 21 + Spring Boot 3.3
-│   ├── payment/                         # Rust + Axum
-│   ├── users/                           # Python + FastAPI
-│   ├── shipping/                        # Kotlin + Ktor
-│   ├── inventory/                       # Go
-│   ├── recommendation/                  # Python + FastAPI + ONNX
-│   └── notification/                    # Go + NATS
-│
-├── libs/                                # Shared, language-scoped libraries
-│   ├── go/otelinit/                     # Standard OTel bootstrap for Go services
-│   ├── ts/otelinit/
-│   ├── java/otelinit/
-│   ├── python/otelinit/
-│   ├── rust/otelinit/
-│   └── kotlin/otelinit/
-│
-├── deploy/
-│   ├── compose/                         # docker compose for the simplest possible start
-│   ├── helm/                            # Umbrella + per-service Helm charts
-│   ├── kustomize/                       # base + overlays/{local,demo,prod}
-│   ├── tilt/                            # Tilt config for inner-loop K8s dev
-│   ├── argocd/                          # GitOps Applications + AppProjects
-│   └── terraform/                       # Optional cloud bootstrap (EKS/GKE/AKS)
-│
-├── observability/
-│   ├── otel-collector/                  # Agent + Gateway configs
-│   ├── grafana/
-│   │   ├── dashboards/                  # Jsonnet (Grafonnet) sources
-│   │   └── datasources/
-│   ├── mimir/                           # Recording rules
-│   ├── loki/
-│   ├── tempo/                           # TraceQL examples
-│   ├── pyroscope/
-│   ├── alerts/                          # Prometheus alerting rules
-│   └── slo/                             # Sloth SLO definitions
-│
-├── chaos/
-│   ├── experiments/                     # Chaos Mesh CRDs
-│   ├── scenarios/                       # Curated incidents (YAML manifests)
-│   └── toxiproxy/                       # Toxiproxy configs per-service
-│
+│   ├── frontend/  bff/                              # presentation
+│   ├── catalogue/ cart/ users/                      # read path
+│   └── orders/ inventory/ payment/ notification/    # checkout saga
+├── deploy/compose/                # base + core / checkout / full / lean-jvm / pyroscope overlays
 ├── tools/
-│   ├── load-generator/                  # k6 scripts + personas
-│   ├── incident-simulator/              # Scenario orchestrator (Go)
-│   ├── data-seeder/                     # Idempotent seed loader
-│   └── trace-labeler/                   # Exports (window, root_cause) incident labels
-│
-├── scripts/
-│   ├── bootstrap.sh                     # One-shot local bringup
-│   ├── seed.sh
-│   └── verify-otel.sh                   # Smoke test: every service must emit a trace
-│
-└── .editorconfig / .gitattributes / .gitignore
+│   ├── incident-simulator/        # labeled fault injection → docs/dataset/incidents/
+│   └── trace-labeler/             # MELT export → docs/dataset/exports/
+├── docs/
+│   ├── adr/                       # Architecture Decision Records
+│   └── dataset/                   # schema, incidents/, and the exported corpus
+└── Taskfile.yml                   # one command interface for everything
 ```
 
-**Conventions:**
-- Every service directory contains its own `README.md`, `Dockerfile`, `Taskfile.yml`, and `OWNERS`.
-- Every service exposes `/healthz`, `/readyz`, `/metrics` (Prometheus), and OTLP-emits by default.
-- Distroless / chiseled base images, multi-arch (`linux/amd64`, `linux/arm64`), rootless.
-- Images signed with **Cosign**, SBOM via **Syft**, scanned with **Trivy** in CI.
+---
+
+## Roadmap
+
+`v0.4` — **the product loop is complete and verified end-to-end:** storefront → correlated MELT → labeled incidents → trainable dataset.
+
+- [x] **v0.1 — Foundations** · monorepo, Taskfile, Compose profiles with per-container memory limits, `proto/` + Buf.
+- [x] **v0.2 — Read path + storefront** · Catalogue, BFF, Cart, Users **+ the Next.js 15 storefront**, all four-signal complete and verified correlated.
+- [x] **v0.3 — Checkout saga** · Orders, Payment, Inventory, Notification over **NATS JetStream** — the whole checkout is **one correlated trace** across the async hops, with compensation. **9 services four-signal complete.**
+- [x] **Incident framework** · the simulator: four Compose-native injection methods, five labeled reproducible scenarios verified live.
+- [x] **The dataset** · `trace-labeler` exports the correlated MELT slice per labeled window into a versioned JSONL corpus.
+
+**Next (optional breadth):**
+
+- [ ] **Realism** · finish the two stub services (shipping, recommendation) and integrate full OIDC auth (a single demo identity today).
+- [ ] **Corpus depth** · multi-fault / combined scenarios and SLO / error-budget framing for richer multi-signal correlation.
+- [ ] **Observability depth** · dashboards-as-code, SLOs, and a separated cluster-grade telemetry topology.
+
+> The labeled corpus exists to one day train an automated SRE assistant. That is the long-term *why*, parked for now — the platform and the dataset stand on their own.
 
 ---
 
-## 🛠 Local Development Promise
+## Contributing & license
 
-> *(Blueprint phase — this section is the contract the code must satisfy.)*
+Contributions are welcome. The model is light: **ADRs first** for architectural changes (`docs/adr/NNNN-title.md`), **Conventional Commits**, and **DCO sign-off** (`git commit -s`) on every PR — no CLA. See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md), and [`SECURITY.md`](SECURITY.md).
 
-Shoe Shop is **resource-first**: it must run on a developer laptop, not just a cluster. The reference envelope is a constrained-but-common machine — **16 GB RAM with Docker/WSL2 capped at 8 GB**. At full load the containerized stack uses ~6.5 GB, leaving only ~1.5 GB of headroom — which the platform's own memory-leak and saturation scenarios can exhaust. Every decision below serves that reality.
-
-### Dual-Path workflow
-One command interface, two runtimes:
-
-- **`task dev` (Hybrid)** — infra + observability run in Docker; you run the single service you're editing natively for instant reloads. The daily driver.
-- **`task up` (Full compose)** — everything containerized, for parity, demos, and reliability scenarios.
-
-### Topology profiles (the RAM dial)
-
-| Profile | Services | Target |
-|---------|----------|--------|
-| `core` *(default)* | 5 read-path — frontend, bff, catalogue, cart, users | Daily dev; the five real read-path MELT-complete services validate together here |
-| `checkout` | core + the v0.3 write path — Orders, Inventory, Payment, Notification | End-to-end checkout-saga traces over NATS JetStream (`task up:checkout`) |
-| `full` | all 11 + Zitadel auth | Demos, integration, chaos |
-| `lean-jvm` | full, Orders/Shipping heaps capped | Tightest budget |
-
-### Escalating tiers
-
-| Tier | Command | Promise | Budget |
-|------|---------|---------|--------|
-| **L0 — Try it** | `task up:core` | Platform + core services + Grafana on `localhost`. No K8s. | ≤ 5 min cold |
-| **L1 — Hack on it** | `task dev` + native service | Live-reload, dev-time tracing on. | ≤ 8 min cold |
-| **L2 — Cluster-grade** | `helm install` on k3d / any K8s | Production-shape topology, HPA, PDBs, NetworkPolicies, mesh-optional. | depends on cluster |
-
-A root `Taskfile.yml` exposes the same verbs across tiers: `task up`, `task seed`, `task chaos:run cascading-timeout`, `task obs`.
-
-### Standing mandates
-- **Every container has a hard memory limit** — turns an out-of-memory event into a clean, observable restart instead of freezing the host, and yields clean, legible failure signals.
-- **Local observability is the `grafana/otel-lgtm` bundle** (~400 MB) with **opt-in Pyroscope**; the separated LGTM+P stack is reserved for the cluster path.
-- **Local Kubernetes is k3d** (not kind) when chaos tooling needs a real control plane; sustained high-volume telemetry generation targets a larger host or a cheap cloud node.
-- **Raw Postgres, database-per-service** (no managed DB), and **NATS JetStream** as the broker — both chosen so failures stay reproducible and inspectable.
-- **Architecture decisions are recorded as ADRs** under `docs/adr/` so every trade-off is auditable. ADR-0001 (local dev & resource constraints) is the first.
-
----
-
-## 🗺 Roadmap
-
-> **The living roadmap is [`ARCHITECTURE.md` §11](ARCHITECTURE.md)** — it stays
-> authoritative on current status (what's real vs. stub) if it and this list ever
-> disagree. The arc below is the high-level public view.
->
-> **Observability is not a milestone — it's the standard.** Every service ships
-> **MELT-complete** (Metrics, Events, Logs, Traces, *verified correlated*) from
-> v0.2 onward — not "traces now, telemetry later." See
-> [ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md) and
-> [ARCHITECTURE.md §9](ARCHITECTURE.md). The labeled incident corpus this produces
-> is the project's real product: its schema is **designed now** (`docs/dataset/`)
-> and built incrementally, not deferred to the end.
-
-- [x] **v0.1 — Foundations**: monorepo scaffold, **Dual-Path `Taskfile.yml`**, **Compose profiles** (`core`/`checkout`/`full`/`lean-jvm`) with per-container mem limits, `proto/` + Buf.
-- [x] **v0.2 — Read path + MELT**: Catalogue (Go), BFF (TS), Cart (Node/Redis), Users (Python) **+ Frontend** (Next.js 15 NEXUS storefront — home · shop · PDP · cart · account) — all **MELT-complete, verified correlated**. **5/11.**
-- [x] **v0.3 — Write path + checkout saga**: **Orders** (Java/Spring), **Payment** (Rust), **Inventory** (Go), **Notification** (Go) over **NATS JetStream** — the checkout saga is **one correlated trace** across the async hops (reserve → authorize → confirm → notify, with compensation). **9/11 MELT-complete.**
-- [x] **Chaos & incidents (v0)**: `tools/incident-simulator` — Compose-native fault injection (4 methods), **5 labeled, reproducible scenarios** verified correlated live, schema-v0 records + Grafana annotations.
-- [x] **Incident dataset (the product)**: `tools/trace-labeler` exports the correlated MELT slice per labeled window into a versioned **JSONL corpus** (`docs/dataset/exports/`). **The product loop — storefront → MELT → labeled incidents → trainable dataset — is closed end-to-end.**
-
-> **The pivot ([ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)).** Partway through, the project re-centred on its real product — the labeled, correlated MELT corpus — and **beelined to it**, deliberately **deferring** the cluster / mesh / CI-signing / ML / observability-depth layers from the original arc. Those remain below as optional, post-product work.
-
-- [ ] **Realism**: finish the 2 stub services — **shipping** (Kotlin/Ktor), **recommendation** (Python/ONNX) — and integrate **Zitadel** auth (single demo identity today).
-- [ ] **Corpus depth**: multi-fault / combined scenarios, SLO / error-budget framing, more service classes per injection method.
-- [ ] **Observability depth**: dashboards-as-code, SLOs (Sloth), Beyla eBPF safety net, separated LGTM+P / Mimir, two-tier Collector.
-- [ ] **Cluster path**: k3d / Helm / Argo CD / Istio Ambient; CI build·test·scan·SBOM·Cosign signing; GA Helm chart on Artifact Hub.
-- [ ] **Project 2 — the AI SRE**: trained on the exported `(telemetry, root_cause)` corpus. The reason the dataset exists.
-
----
-
-## 📜 License & Contributing
-
-**Apache License 2.0.** Permissive, vendor-friendly, the CNCF default — chosen so vendors and educators can adopt Shoe Shop without legal friction.
-
-Contributions are welcomed once the v0.1 scaffold is in place. The contribution model is:
-
-- **ADRs first** for any architectural change (`docs/adr/NNNN-title.md`)
-- **Conventional Commits** for changelog automation
-- **DCO sign-off** on all PRs (no CLA)
-- **Reproducible CI** — every PR runs the full stack and a smoke chaos scenario before merge
-
----
+Licensed under the **[Apache License 2.0](LICENSE)** — permissive and vendor-friendly, so engineers, educators, and tool authors can adopt Shoe Shop without friction.
 
 <div align="center">
 
-**Shoe Shop is a love letter to the people running production at 3 a.m.**
+---
 
-*Built so anyone learning to run distributed systems has something real to learn from.*
+**Built for everyone learning to run distributed systems — so there's something real to learn on.**
 
 </div>
