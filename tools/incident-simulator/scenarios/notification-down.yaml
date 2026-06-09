@@ -1,0 +1,61 @@
+# Scenario manifest — notification worker down (silent fulfilment failure).
+#
+# The analog of Sock Shop's "Incident 5 — Async Processing Failure" (there:
+# queue-master scaled to 0; messages pile up in RabbitMQ, orders succeed but
+# never ship). Here we stop the Notification worker — a durable JetStream
+# consumer on the terminal orders.confirmed/orders.cancelled events. Orders still
+# complete normally (the saga does not depend on Notification), but no notice is
+# "sent": a SILENT failure with no user-facing error. On recovery the durable
+# consumer redelivers the backlog and catches up.
+#
+# Injection: compose-stop (the container is stopped, not removed, so recovery can
+# `start` the same one and drain the pending messages).
+
+scenario_id: notification-down
+title: "Notification worker down — orders confirm but no notice is sent"
+severity: sev3
+target_service: notification
+
+fault:
+  type: service-down
+  injection_method: compose-stop
+  parameters: {}
+
+load:
+  mode: sequential
+  orders: 6          # orders that confirm with no matching notification
+  settle_s: 30
+
+label:
+  root_cause: >
+    The Notification worker (a durable JetStream consumer on orders.confirmed /
+    orders.cancelled) was stopped. The checkout saga is independent of it, so
+    orders still reached CONFIRMED — but the terminal events accumulated
+    unconsumed on the ORDERS stream and no notification.sent was emitted. A
+    silent failure: no HTTP error, no crash, just a broken fan-out tail.
+  affected_services: [notification, orders]
+  expected_symptoms:
+    - signal: metrics
+      service: notification
+      description: notification.messages stops incrementing for the window (flat), then a catch-up burst on recovery
+      where: 'sum(rate(notification_messages_total[1m]))'
+    - signal: events
+      service: orders
+      description: orders.confirmed events still emitted with NO matching notification.sent (producer up, consumer down)
+      where: 'event.name = "orders.confirmed"'
+    - signal: logs
+      service: notification
+      description: the notification log stream goes silent during the window (no consume records)
+      where: '{service_name="notification"}'
+    - signal: traces
+      service: orders
+      description: saga traces still reach CONFIRMED, but no `consume orders.confirmed` span joins them
+      where: '{ resource.service.name = "orders" }'
+  correlation:
+    resource_selector: 'service.namespace="shoeshop", deployment.environment="local"'
+    exemplar_metric: notification_process_duration_seconds
+  remediation: >
+    Started the Notification worker again; its durable consumer redelivered the
+    pending terminal events and caught up (a notification.sent burst). Durable
+    fix: alert on consumer-count = 0 / rising consumer-pending for the ORDERS
+    stream so a stalled fan-out is detected before notices are missed for hours.

@@ -40,14 +40,13 @@ evidence.
   incident-simulator ([`tools/incident-simulator/`](../../tools/incident-simulator/))
   to what the Compose stack can actually do:
   - **`env-knob`** — set a service env var and recreate its container (e.g. the
-    Payment simulator's `PAYMENT_FAILURE_RATE` / `PAYMENT_LATENCY_MS`). The only
-    method **implemented** in simulator v0.
+    Payment simulator's `PAYMENT_FAILURE_RATE` / `PAYMENT_LATENCY_MS`). ✅ wired.
   - **`compose-stop`** — stop a container outright (service-down faults; the
-    Compose analog of Sock Shop's "scale to 0"). *Designed, not yet wired.*
-  - **`resource-limit`** — apply a `mem_limit` / `cpus` cap to starve a service
-    (DB-throttle faults). *Designed, not yet wired.*
-  - **`load`** — drive excess storefront traffic (saturation/crash faults).
-    *Designed, not yet wired.*
+    Compose analog of Sock Shop's "scale to 0", e.g. the Notification worker). ✅ wired.
+  - **`resource-limit`** — pin a legacy `cpus` cap via an override + recreate to
+    starve a service (DB-throttle faults; e.g. Postgres). ✅ wired.
+  - **`load`** — drive excess storefront traffic (saturation faults); the load
+    itself is the fault, nothing on a container changes. ✅ wired.
   - **`toxiproxy`** — network fault injection. *Planned* — requires a Toxiproxy
     sidecar that is **not** in the stack today, so the cascading-timeout fixture
     that uses it ([`examples/`](examples/)) remains a design fixture until then.

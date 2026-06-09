@@ -1,0 +1,63 @@
+# Scenario manifest — read-path traffic spike.
+#
+# The analog of Sock Shop's "Incident 4 — Pure Application Latency" (500 users,
+# slow but no crashes). Here a burst of concurrent product browse + search
+# traffic drives the read path (BFF -> Catalogue -> Postgres/Meilisearch) to
+# elevated latency. No fault is injected — the LOAD is the incident. The system
+# stays up but RED duration rises under the spike: the early-warning class that
+# precedes a saturation crash.
+#
+# Injection: load — nothing is changed on any container; the concurrent load
+# driver itself is the fault.
+
+scenario_id: checkout-load-spike
+title: "Read-path traffic spike — browse/search latency climbs under load"
+severity: sev3
+target_service: bff
+
+fault:
+  type: traffic-spike
+  injection_method: load
+  parameters:
+    workers: 12
+    flow: mixed
+
+load:
+  mode: concurrent
+  flow: mixed         # alternate GET /api/products and /api/search
+  workers: 12
+  duration_s: 80
+
+label:
+  root_cause: >
+    A burst of concurrent product-browse and search traffic (no fault injected)
+    pushed the read path — BFF to Catalogue to Postgres/Meilisearch — to elevated
+    request latency. Every service stayed up; the symptom is degraded RED
+    duration and a request-rate spike, the early warning before a saturation
+    failure rather than the failure itself.
+  affected_services: [bff, catalogue, frontend]
+  expected_symptoms:
+    - signal: metrics
+      service: bff
+      description: request rate spikes and http.server request-duration p99 rises
+      where: 'histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[5m])))'
+    - signal: metrics
+      service: catalogue
+      description: rpc.server.requests rate spikes and rpc.server.duration p99 rises
+      where: 'sum(rate(rpc_server_requests_total{service_name="catalogue"}[5m]))'
+    - signal: traces
+      service: bff
+      description: a high volume of bff -> catalogue request traces during the window
+      where: '{ resource.service.name = "bff" }'
+    - signal: logs
+      service: catalogue
+      description: elevated request-handling log volume, each record carrying trace_id
+      where: '{service_name="catalogue"}'
+  correlation:
+    resource_selector: 'service.namespace="shoeshop", deployment.environment="local"'
+    exemplar_metric: http_server_request_duration_seconds
+  remediation: >
+    The spike subsided on its own when the load stopped. Durable fix: a read
+    cache / CDN in front of catalogue, request rate-limiting at the BFF, and
+    horizontal headroom (autoscaling) so a traffic surge degrades gracefully
+    instead of sliding into saturation.

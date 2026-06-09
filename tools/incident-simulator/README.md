@@ -38,21 +38,51 @@ window in Grafana / Tempo / Loki / Mimir using **absolute** time bounds.
 
 A manifest (`scenarios/<name>.yaml`) declares the `fault` to inject, the `load`
 to drive, and the static `label` fields (root cause, expected symptoms,
-remediation). The simulator fills the runtime fields (window, order ids). Shipped:
+remediation). The simulator fills the runtime fields (window, order ids, load
+stats). Shipped:
 
-| Scenario | Fault | Sock Shop analog |
-|----------|-------|------------------|
-| `payment-hard-decline` | `PAYMENT_FAILURE_RATE=1.0` → every order declined → CANCELLED | Incident 3 — Payment Transaction Failure |
-| `payment-latency-spike` | `PAYMENT_LATENCY_MS=1500` → slow authorizations inflate the saga | Incident 6 — Payment Gateway Timeout |
+| Scenario | Method | Fault | Sock Shop analog |
+|----------|--------|-------|------------------|
+| `payment-hard-decline` | env-knob | `PAYMENT_FAILURE_RATE=1.0` → every order declined → CANCELLED | #3 Payment Transaction Failure |
+| `payment-latency-spike` | env-knob | `PAYMENT_LATENCY_MS=1500` → slow authorizations inflate the saga | #6 Payment Gateway Timeout |
+| `notification-down` | compose-stop | stop the Notification worker → orders confirm but no notice is sent (silent fan-out failure) | #5 Async Processing Failure |
+| `catalogue-db-throttle` | resource-limit | cap Postgres to 0.1 CPU under browse load → product-listing latency climbs | #8 Database Performance Degradation |
+| `checkout-load-spike` | load | concurrent browse/search burst → read-path latency climbs (no fault injected) | #4 Pure Application Latency |
 
 ## Injection methods
 
-See the `injection_method` enum in
-[`incident-schema.md`](../../docs/dataset/incident-schema.md). v0 implements
-**`env-knob`** (set an env var + recreate the container). `compose-stop`,
-`resource-limit`, and `load`-saturation are designed and slot into the same
-dispatch as more scenario classes land (mapping to Sock Shop incidents 5, 8, and
-1/2/4 respectively).
+All four `injection_method` enum values
+([`incident-schema.md`](../../docs/dataset/incident-schema.md)) are wired:
+
+- **`env-knob`** — ephemeral override + `--force-recreate` (knobs read at startup).
+- **`compose-stop`** — `docker compose stop` / `start` (the stopped container is
+  kept, so a durable NATS consumer drains its backlog on recovery).
+- **`resource-limit`** — pin a legacy `cpus` cap via override + recreate (the
+  legacy form, not `deploy.resources`, because the base services set `mem_limit`
+  and compose refuses to mix the two; recreating without the override clears it).
+- **`load`** — no container change; the concurrent (read-only) load driver is the
+  fault.
+
+### Load modes
+
+- **sequential** (`orders` / `settle_s`): one checkout at a time — the write-path
+  payment / notification scenarios.
+- **concurrent** (`workers` / `duration_s` / `flow`): read-only `browse`/`search`/
+  `mixed` load for a fixed duration — saturation and DB-throttle scenarios. Read
+  flows only: the per-user cart makes concurrent checkout race on one shopper.
+
+> **Observer export interval.** For `resource-limit` / `load`, the *observed*
+> service (catalogue, bff) exports metrics on the default 60s interval, so a ~80s
+> window holds only ~1–2 points — query its histograms with a **wide rate window**
+> (`[5m]`), not `[1m]`. (The `env-knob` scenarios sidestep this by injecting a
+> short `OTEL_METRIC_EXPORT_INTERVAL` onto the faulted container itself.)
+
+## Grafana annotations
+
+Each run posts a region annotation (tags: `incident-simulator`, `<scenario_id>`,
+`<incident_id>`) over its window to the bundle's Grafana, so incidents show as
+shaded bands on the dashboards. Best-effort — a failed annotation never fails the
+run. Configure via `GRAFANA_URL` / `GRAFANA_AUTH` (default `admin:admin`).
 
 ## Why a recreate, not a restart
 

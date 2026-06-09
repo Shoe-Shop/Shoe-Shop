@@ -1,0 +1,63 @@
+# Scenario manifest — catalogue database CPU starvation.
+#
+# The analog of Sock Shop's "Incident 8 — Database Performance Degradation"
+# (there: catalogue-db CPU capped to 50m → slow queries → circuit breaker). Here
+# we live-throttle Postgres to 0.1 CPU while driving product-browse load, so the
+# Catalogue service's ListProducts SELECTs queue on the starved DB: product
+# listing latency climbs, nothing crashes (Running, not OOMKilled) — the
+# throttle-not-crash class.
+#
+# Injection: resource-limit — an ephemeral Compose override pins
+# deploy.resources.limits.cpus and the container is recreated under the cap
+# (recovery drops the override and recreates uncapped).
+
+scenario_id: catalogue-db-throttle
+title: "Catalogue DB CPU starvation — product listing slows under load"
+severity: sev2
+target_service: postgres
+
+fault:
+  type: resource-exhaustion
+  injection_method: resource-limit
+  parameters:
+    cpus: "0.1"
+
+load:
+  mode: concurrent
+  flow: browse        # GET /api/products -> catalogue.ListProducts -> postgres
+  workers: 8
+  duration_s: 80      # outlive the 60s metric-export interval of the observers
+
+label:
+  root_cause: >
+    Postgres was CPU-capped to 0.1 of a core while product-browse load ran. The
+    Catalogue service stayed up but its ListProducts SELECTs queued on the
+    starved database, so product-listing latency climbed sharply (a throttle, not
+    a crash — pods remained Running). The latency cascaded to the BFF and the
+    storefront read path.
+  affected_services: [postgres, catalogue, bff, frontend]
+  expected_symptoms:
+    - signal: metrics
+      service: catalogue
+      description: rpc.server.duration p99 for catalogue climbs well above its sub-10ms baseline
+      where: 'histogram_quantile(0.99, sum by (le) (rate(rpc_server_duration_seconds_bucket{service_name="catalogue"}[5m])))'
+    - signal: traces
+      service: catalogue
+      description: ListProducts spans and their pgx query child spans run long against the throttled DB
+      where: '{ resource.service.name = "catalogue" && duration > 200ms }'
+    - signal: metrics
+      service: bff
+      description: cascade — BFF /api/products request duration p99 rises in step
+      where: 'histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[5m])))'
+    - signal: logs
+      service: catalogue
+      description: elevated request-handling latency in catalogue logs, each carrying trace_id
+      where: '{service_name="catalogue"}'
+  correlation:
+    resource_selector: 'service.namespace="shoeshop", deployment.environment="local"'
+    exemplar_metric: rpc_server_duration_seconds
+  remediation: >
+    Removed the CPU cap (dropped the override and recreated Postgres uncapped);
+    query latency returned to baseline. Durable fix: guarantee DB CPU/IO, add slow-query logging and an
+    index review, and bound the catalogue connection pool + add a read cache so a
+    starved DB sheds load instead of cascading to every browse request.

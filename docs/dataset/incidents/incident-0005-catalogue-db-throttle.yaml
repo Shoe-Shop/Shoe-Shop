@@ -1,0 +1,64 @@
+# Captured incident label record (schema v0) — produced by
+# tools/incident-simulator. Real time_window from a live run against the
+# checkout stack; the static label fields come from the scenario manifest
+# scenarios/catalogue-db-throttle.yaml.
+
+schema_version: v0
+incident_id: incident-0005
+title: "Catalogue DB CPU starvation \u2014 product listing slows under load"
+scenario_id: catalogue-db-throttle
+severity: sev2
+time_window:
+  start: '2026-06-09T05:43:03Z'
+  end: '2026-06-09T05:44:43Z'
+fault:
+  type: resource-exhaustion
+  target_service: postgres
+  injection_method: resource-limit
+  parameters:
+    cpus: '0.1'
+root_cause: "Postgres was CPU-capped to 0.1 of a core while product-browse load ran. The Catalogue\
+  \ service stayed up but its ListProducts SELECTs queued on the starved database, so product-listing\
+  \ latency climbed sharply (a throttle, not a crash \u2014 pods remained Running). The latency\
+  \ cascaded to the BFF and the storefront read path.\n"
+affected_services:
+- postgres
+- catalogue
+- bff
+- frontend
+signals_touched:
+  metrics: true
+  events: true
+  logs: true
+  traces: true
+expected_symptoms:
+- signal: metrics
+  service: catalogue
+  description: rpc.server.duration p99 for catalogue climbs well above its sub-10ms baseline
+  where: histogram_quantile(0.99, sum by (le) (rate(rpc_server_duration_seconds_bucket{service_name="catalogue"}[5m])))
+- signal: traces
+  service: catalogue
+  description: ListProducts spans and their pgx query child spans run long against the throttled
+    DB
+  where: '{ resource.service.name = "catalogue" && duration > 200ms }'
+- signal: metrics
+  service: bff
+  description: "cascade \u2014 BFF /api/products request duration p99 rises in step"
+  where: histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{service_name="bff"}[5m])))
+- signal: logs
+  service: catalogue
+  description: elevated request-handling latency in catalogue logs, each carrying trace_id
+  where: '{service_name="catalogue"}'
+correlation:
+  resource_selector: service.namespace="shoeshop", deployment.environment="local"
+  exemplar_metric: rpc_server_duration_seconds
+  trace_ids: []
+remediation: 'Removed the CPU cap (dropped the override and recreated Postgres uncapped);
+  query latency returned to baseline. Durable fix: guarantee DB CPU/IO, add slow-query logging
+  and an index review, and bound the catalogue connection pool + add a read cache so a starved
+  DB sheds load instead of cascading to every browse request.
+
+  '
+labeler: incident-simulator/v0
+notes: 'Captured run of scenario ''catalogue-db-throttle''. Load: 27510 reqs, 0 errs, p95=67.0ms
+  p99=99.5ms @ 343.9 rps. trace_ids backfillable from Tempo by order.id / time window.'

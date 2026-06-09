@@ -150,21 +150,31 @@ each born MELT-complete:
   saga trace_id. `services/notification/` (Go, nats.go jetstream). See §9 + memory
   `notification-go-nats-sdk`. **9 of 11 MELT-complete; v0.3 write path complete (4/4).**
 
-**Chaos / incident framework (v0 — DONE this session):** `tools/incident-simulator/`
+**Chaos / incident framework (v0 — DONE):** `tools/incident-simulator/`
 (Python-in-container; `task chaos:run -- <scenario>`) runs one scenario
 `manifest → inject → load → recover → label`, writing a schema-v0 record to
-`docs/dataset/incidents/` with the captured `time_window` + `order_ids`. Fills the
-old `chaos:run` stub; fixes the `injection_method` enum (v0 implements `env-knob`:
-env var + `--force-recreate` one container; `compose-stop`/`resource-limit`/`load`
-designed, not wired). Two deterministic Payment-knob scenarios ship, both verified
-correlated live in the LGTM bundle (absolute windows): **payment-hard-decline**
-(`PAYMENT_FAILURE_RATE=1.0` → all orders CANCELLED; `payment_requests_total{result=
-"declined"}`=5 + per-order `payment.declined` WARN logs with the saga trace_id) and
-**payment-latency-spike** (`PAYMENT_LATENCY_MS=1500` → mean `payment_duration_seconds`
-≈1.51s, orders still CONFIRMED). Deterministic analogs of Sock Shop incidents 3/6
-(see memory `incident-simulator-v0`). Gotcha: a short incident window < the 60s OTLP
-metric-export interval, so the simulator injects a short `OTEL_METRIC_EXPORT_INTERVAL`
-onto the faulted container or metrics never flush before recovery recreates it.
+`docs/dataset/incidents/` (captured `time_window` + `order_ids` + load stats) and
+posting a Grafana region annotation per window. Fills the old `chaos:run` stub;
+the `injection_method` enum is fixed with **all four methods wired**. **Five
+scenarios, all verified correlated live (absolute windows), ≈ Sock Shop 3/6/5/8/4:**
+- **payment-hard-decline** (`env-knob` `PAYMENT_FAILURE_RATE=1.0`) → all CANCELLED;
+  `payment_requests_total{result="declined"}`=5 + `payment.declined` WARN logs.
+- **payment-latency-spike** (`env-knob` `PAYMENT_LATENCY_MS=1500`) → mean
+  `payment_duration_seconds`≈1.51s, orders CONFIRMED.
+- **notification-down** (`compose-stop`) → orders CONFIRM but no `notification.sent`
+  (silent fan-out); durable consumer drains the backlog on recovery.
+- **catalogue-db-throttle** (`resource-limit`, Postgres→0.1 CPU + browse load) →
+  catalogue `rpc_server_duration` p99≈96ms (10×), no crash.
+- **checkout-load-spike** (`load`, 12 workers×80s) → read-path rate/latency climb
+  (≈517 rps), stays up.
 
-**Then:** more injection methods + service classes (compose-stop → service-down,
-resource-limit → DB throttle, load → saturation), Grafana annotations per window.
+Mechanics/gotchas (see memory `incident-simulator-v0`): `env-knob`/`resource-limit`
+inject an ephemeral `compose.incident.gen.yaml` override + `--force-recreate`;
+`resource-limit` MUST use the legacy `cpus:` form (base services set `mem_limit`,
+which compose won't mix with `deploy.resources`; `docker update --cpus` can't be
+cleared). Window < 60s OTLP metric-export interval → for `env-knob` inject a short
+`OTEL_METRIC_EXPORT_INTERVAL` on the faulted container; for `resource-limit`/`load`
+the *observer* still exports at 60s so query its histograms with `[5m]` rate.
+
+**Then:** more service classes per method, SLO/error-budget framing, combined
+multi-fault scenarios for multi-signal correlation.

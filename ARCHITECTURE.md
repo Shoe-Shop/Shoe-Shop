@@ -1108,21 +1108,31 @@ runner driven by `task chaos:run -- <scenario>`. It executes one scenario
 `manifest → inject → load → recover → label`: injects a fault, drives the real
 storefront checkout load so it manifests across all four MELT signals, recovers,
 and writes a schema-v0 record to [`docs/dataset/incidents/`](docs/dataset/incidents/)
-with the captured `time_window` + `order_ids`. Injection is Compose-native; v0
-implements **`env-knob`** (set a service env var + `--force-recreate` the one
-container — the fixed `injection_method` enum lists the rest: `compose-stop`,
-`resource-limit`, `load`). Two scenarios ship, both deterministic via the Payment
-simulator's knobs and both verified correlated live in the LGTM bundle:
-**`payment-hard-decline`** (`PAYMENT_FAILURE_RATE=1.0` → every order declined →
-CANCELLED; verified `payment_requests_total{result="declined"}` + per-order
-`payment.declined` WARN logs carrying the saga `trace_id`) and
-**`payment-latency-spike`** (`PAYMENT_LATENCY_MS=1500` → authorizations succeed
-but the payment hop adds ~1.5s; verified mean `payment_duration_seconds` ≈ 1.51s).
-These are the deterministic analogs of Sock Shop incidents 3 (payment failure) and
-6 (gateway timeout). One gotcha baked in: an incident window is often shorter than
-the default 60s OTLP metric-export interval, so the simulator injects a short
-`OTEL_METRIC_EXPORT_INTERVAL` onto the faulted container for the duration — else
-the metric signal never flushes before recovery recreates it.
+with the captured `time_window` + `order_ids` + load stats, and posts a Grafana
+**region annotation** over the window. Injection is Compose-native, and all four
+`injection_method` enum values are wired: **`env-knob`** (env var +
+`--force-recreate`), **`compose-stop`** (`docker compose stop`/`start`),
+**`resource-limit`** (legacy `cpus` cap via override + recreate), and **`load`**
+(the concurrent read-only load driver is itself the fault). **Five scenarios
+ship, all verified correlated live in the LGTM bundle:**
+- **`payment-hard-decline`** (env-knob, `PAYMENT_FAILURE_RATE=1.0`) → every order
+  declined → CANCELLED; `payment_requests_total{result="declined"}`=5 + per-order
+  `payment.declined` WARN logs carrying the saga `trace_id`. ≈ Sock Shop #3.
+- **`payment-latency-spike`** (env-knob, `PAYMENT_LATENCY_MS=1500`) → orders still
+  CONFIRMED but mean `payment_duration_seconds` ≈ 1.51s. ≈ Sock Shop #6.
+- **`notification-down`** (compose-stop) → orders CONFIRM but no notice is sent;
+  the silent fan-out failure (metrics flat, no `notification.sent`), and on
+  recovery the durable consumer drains the backlog. ≈ Sock Shop #5.
+- **`catalogue-db-throttle`** (resource-limit, Postgres → 0.1 CPU + browse load) →
+  catalogue `rpc_server_duration` p99 ≈ 96ms (10× baseline), no crash. ≈ Sock Shop #8.
+- **`checkout-load-spike`** (load, 12 workers × 80s browse/search) → read-path
+  rate/latency climb (≈ 517 rps), system stays up. ≈ Sock Shop #4.
+
+Two gotchas baked in: (1) an incident window is often shorter than the default 60s
+OTLP metric-export interval, so for `env-knob` the simulator injects a short
+`OTEL_METRIC_EXPORT_INTERVAL` onto the faulted container; (2) for `resource-limit`/
+`load` the *observed* service still exports at 60s, so its histograms must be
+queried with a wide (`[5m]`) rate window over the ~80s window.
 
 ---
 
@@ -1196,11 +1206,12 @@ the metric signal never flushes before recovery recreates it.
   orchestrating labeled scenarios (`manifest → inject → load → recover → label`),
   writing `(time_window, root_cause, …)` records per the
   [`docs/dataset/`](docs/dataset/) schema into `docs/dataset/incidents/`; the
-  `chaos:run` task stub is filled and the `injection_method` enum is fixed. Two
-  Payment-knob scenarios ship, verified correlated live (§10). **Next:** more
-  injection methods (`compose-stop` → Sock-Shop-style service-down; `resource-limit`
-  → DB throttle; `load` → saturation), the other service classes, and Grafana
-  annotations over each window.
+  `chaos:run` task stub is filled and the `injection_method` enum is fixed. **All
+  four injection methods wired** (`env-knob`, `compose-stop`, `resource-limit`,
+  `load`) across **five scenarios** mapping to Sock Shop incidents 3/6/5/8/4, each
+  posting a Grafana region annotation and all verified correlated live (§10).
+  **Next:** more service classes per method, error-budget/SLO framing, and combined
+  (multi-fault) scenarios to exercise multi-signal correlation.
 
 **Recommended sequencing:** the MELT retrofit on the existing 4 services is now
 **complete** — telemetry debt was paid at its cheapest point (4 services, no drift),

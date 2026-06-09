@@ -1,0 +1,71 @@
+# Captured incident label record (schema v0) — produced by
+# tools/incident-simulator. Real time_window from a live run against the
+# checkout stack; the static label fields come from the scenario manifest
+# scenarios/notification-down.yaml.
+
+schema_version: v0
+incident_id: incident-0004
+title: "Notification worker down \u2014 orders confirm but no notice is sent"
+scenario_id: notification-down
+severity: sev3
+time_window:
+  start: '2026-06-08T12:51:11Z'
+  end: '2026-06-08T12:51:49Z'
+fault:
+  type: service-down
+  target_service: notification
+  injection_method: compose-stop
+  parameters: {}
+root_cause: "The Notification worker (a durable JetStream consumer on orders.confirmed / orders.cancelled)\
+  \ was stopped. The checkout saga is independent of it, so orders still reached CONFIRMED\
+  \ \u2014 but the terminal events accumulated unconsumed on the ORDERS stream and no notification.sent\
+  \ was emitted. A silent failure: no HTTP error, no crash, just a broken fan-out tail.\n"
+affected_services:
+- notification
+- orders
+signals_touched:
+  metrics: true
+  events: true
+  logs: true
+  traces: true
+expected_symptoms:
+- signal: metrics
+  service: notification
+  description: notification.messages stops incrementing for the window (flat), then a catch-up
+    burst on recovery
+  where: sum(rate(notification_messages_total[1m]))
+- signal: events
+  service: orders
+  description: orders.confirmed events still emitted with NO matching notification.sent (producer
+    up, consumer down)
+  where: event.name = "orders.confirmed"
+- signal: logs
+  service: notification
+  description: the notification log stream goes silent during the window (no consume records)
+  where: '{service_name="notification"}'
+- signal: traces
+  service: orders
+  description: saga traces still reach CONFIRMED, but no `consume orders.confirmed` span joins
+    them
+  where: '{ resource.service.name = "orders" }'
+correlation:
+  resource_selector: service.namespace="shoeshop", deployment.environment="local"
+  exemplar_metric: notification_process_duration_seconds
+  order_ids:
+  - 4c4f0452-991d-4594-a189-8a7808d0604a
+  - f930f9d3-e47f-4107-9e5d-2cbf3ea34b9a
+  - 93b61927-c2a0-44e1-b409-cc457b8358ec
+  - 47841a6e-873e-420c-8558-e5f5d1ed5a0b
+  - 3e1b63f3-951f-4ddb-beb3-ee293d72cdb7
+  - 9fab6a67-d564-402b-b1e7-9b5aa94fb1f4
+  trace_ids: []
+remediation: 'Started the Notification worker again; its durable consumer redelivered the
+  pending terminal events and caught up (a notification.sent burst). Durable fix: alert on
+  consumer-count = 0 / rising consumer-pending for the ORDERS stream so a stalled fan-out
+  is detected before notices are missed for hours.
+
+  '
+labeler: incident-simulator/v0
+notes: Captured run of scenario 'notification-down'. 6 order(s) placed against seeded shopper
+  11111111-1111-1111-1111-111111111111. trace_ids backfillable from Tempo by order.id / time
+  window.

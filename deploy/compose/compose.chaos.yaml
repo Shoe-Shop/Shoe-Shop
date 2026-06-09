@@ -17,6 +17,9 @@ services:
     environment:
       REPO_DIR: /work
       BFF_URL: http://bff:8080
+      # Grafana (in the LGTM bundle) for region annotations over each window.
+      GRAFANA_URL: http://otel-lgtm:3000
+      GRAFANA_AUTH: admin:admin
     volumes:
       # The repo: compose files to drive, docs/dataset/incidents to write into.
       - ../../:/work
