@@ -9,7 +9,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-7c3aed)](https://opentelemetry.io/)
 [![CNCF Stack](https://img.shields.io/badge/Stack-CNCF-1e40af)](https://www.cncf.io/)
-[![Status: v0.2 · MELT-complete + Frontend](https://img.shields.io/badge/Status-v0.2_·_MELT--complete_+_Frontend-brightgreen)]()
+[![Status: v0.4 · MELT dataset generator](https://img.shields.io/badge/Status-v0.4_·_MELT_dataset_generator-brightgreen)]()
 
 </div>
 
@@ -257,22 +257,23 @@ Chaos in Shoe Shop is **never random pod-killing.** The platform orchestrates re
 | **Network** | **Toxiproxy** sidecars | Per-connection latency injection, bandwidth throttling, slow-close. Surgical, in-process. |
 | **Application** | **Feature-flag fault injection** (OpenFeature) | In-code "if flag set, return 500 / sleep 2s / leak 100MB." Models bugs, not infra failures. |
 
-### The Incident Simulator (custom)
-A small Go service in `tools/incident-simulator/` that **orchestrates scenarios** — not single faults. Examples shipped on day 1:
+### The Incident Simulator (shipped — v0)
+`tools/incident-simulator/` is a **Python-in-container** orchestrator (`task chaos:run -- <scenario>`) that runs one labeled scenario end-to-end — `manifest → inject → load → recover → label` — against the running checkout stack, using **Compose-native fault injection** (env-knob, compose-stop, resource-limit, load). It writes a schema-v0 `(time_window, root_cause, …)` record to `docs/dataset/incidents/` and posts a Grafana region annotation per window.
 
-| Scenario | Symptom chain | Root cause |
-|----------|---------------|------------|
-| `cascading-timeout` | BFF p99 ↑ → Cart errors ↑ → Cart pool exhaustion → Catalogue healthy but blackholed | Slow Redis cluster member |
-| `noisy-neighbor` | Payment CPU throttling → Order checkout latency ↑ → SLO burn | Recommendation pod starts onnx-inference batch on shared node |
-| `db-pool-exhaustion` | Orders 500s ↑ → connection refused | Long-running migration holds connections |
-| `memory-leak` | Notification pod OOMKilled every 6h → backlog grows in NATS | Goroutine leak under a specific event type |
-| `dns-flap` | Random services briefly unreachable, recover, repeat | CoreDNS pod cycling |
-| `clock-skew` | JWT validation fails on Users → cascading 401s | Time drift on one node |
+> The three-layer chaos design above (Chaos Mesh / Toxiproxy / feature-flags) is the **cluster-path blueprint**; the shipped v0 deliberately uses Compose-native injection so it runs on a laptop. Toxiproxy network faults are reserved in the schema but await a sidecar.
 
-Each scenario:
-- Has a machine-readable **manifest** (`scenarios/cascading-timeout.yaml`) declaring the fault sequence, expected symptoms, and ground-truth root cause.
-- Emits **annotation events** to Grafana (`incident.start`, `incident.end`) tagged with the scenario ID.
-- Produces a labeled `(time_window, root_cause)` record — **so every incident is reproducible and can be studied after the fact.**
+**Five scenarios shipped, all verified correlated live** (≈ Sock Shop incidents 3/6/5/8/4):
+
+| Scenario | Method | Fault → symptom |
+|----------|--------|-----------------|
+| `payment-hard-decline` | env-knob | `PAYMENT_FAILURE_RATE=1.0` → every order declined → CANCELLED via saga compensation |
+| `payment-latency-spike` | env-knob | `PAYMENT_LATENCY_MS=1500` → slow authorizations, orders still CONFIRM |
+| `notification-down` | compose-stop | orders CONFIRM but no `notification.sent`; durable consumer drains backlog on recovery |
+| `catalogue-db-throttle` | resource-limit | Postgres → 0.1 CPU under browse load → catalogue p99 ≈ 10× baseline |
+| `checkout-load-spike` | load | concurrent browse/search burst → read-path latency climbs, system stays up |
+
+### The dataset export pipeline (shipped — the product)
+`tools/trace-labeler/` (`task dataset:export`) turns each labeled incident into a **trainable example**: it extracts the correlated four-signal (MELT) slice bounded by the record's `time_window` from the LGTM bundle and writes one self-contained JSONL line per incident to `docs/dataset/exports/` (`dataset.jsonl` + a sha256-provenanced `manifest.json`). Input = the four signals; label = `root_cause` / `remediation` / `fault`. **This is the corpus the project exists to produce** — the supervised training data for the future AI SRE ([ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)).
 
 ### Load generation
 - **k6** for HTTP/gRPC load with realistic distributions (Pareto for cart sizes, Poisson for arrivals).
@@ -418,7 +419,8 @@ One command interface, two runtimes:
 
 | Profile | Services | Target |
 |---------|----------|--------|
-| `core` *(default)* | 7 — frontend, bff, catalogue, cart, users, orders, payment | Daily dev; the five real MELT-complete services (catalogue, cart, bff, users, frontend) validate together here |
+| `core` *(default)* | 5 read-path — frontend, bff, catalogue, cart, users | Daily dev; the five real read-path MELT-complete services validate together here |
+| `checkout` | core + the v0.3 write path — Orders, Inventory, Payment, Notification | End-to-end checkout-saga traces over NATS JetStream (`task up:checkout`) |
 | `full` | all 11 + Zitadel auth | Demos, integration, chaos |
 | `lean-jvm` | full, Orders/Shipping heaps capped | Tightest budget |
 
@@ -455,18 +457,19 @@ A root `Taskfile.yml` exposes the same verbs across tiers: `task up`, `task seed
 > is the project's real product: its schema is **designed now** (`docs/dataset/`)
 > and built incrementally, not deferred to the end.
 
-- [x] **v0.1 — Foundations**: monorepo scaffold, **Dual-Path `Taskfile.yml`**, **Compose profiles** (`core`/`full`/`lean-jvm`) with per-container mem limits, `proto/` + Buf. *(CI workflows and shared per-language OTel libs are still to come.)*
-- [x] **v0.2 — Read path + MELT**: Catalogue (Go), BFF (TS), Cart (Node/Redis), Users (Python) built **and all four retrofitted MELT-complete** — four correlated signals in Grafana. **Frontend (NEXUS)** — Next.js 15 App Router storefront (home · shop · PDP · cart · account) against the live BFF — shipped **and MELT-complete** (RED + Web Vitals, trace_id-stamped logs/events, `frontend → bff → catalogue` traces, verified correlated). **5 of 11 services MELT-complete.**
-- [x] **Account path**: **BFF → Users** wired (gRPC, by-email/by-id); the Frontend account page is **live** — one `frontend → bff → users → postgres` trace. Auth (Zitadel) still deferred; single demo identity until then.
-- [ ] **v0.3 — Write path**: Orders + Payment + Inventory + checkout, **NATS JetStream** events (where domain **Events** get rich), sagas working
-- [ ] **v0.4 — Async**: Notification + Shipping event flows over NATS
-- [ ] **v0.5 — Observability depth**: dashboards-as-code, SLOs, Beyla eBPF safety net, opt-in Pyroscope profiles
-- [ ] **v0.6 — Chaos & incidents**: Toxiproxy + feature-flag faults + the incident-simulator; first labeled, reproducible scenarios
-- [ ] **v0.7 — Recommendation**: ML service, GPU-optional, tail-latency dashboards
-- [ ] **v0.8 — Mesh overlay**: Istio Ambient opt-in
-- [ ] **v0.9 — Polish**: Lighthouse ≥ 95, k6 personas, docs site
-- [ ] **v1.0 — GA**: Helm chart on Artifact Hub, blog post, conference demo
-- [ ] **v1.x — Incident dataset**: labeled `(telemetry, root_cause)` exports for offline study and the AI-SRE "project 2"
+- [x] **v0.1 — Foundations**: monorepo scaffold, **Dual-Path `Taskfile.yml`**, **Compose profiles** (`core`/`checkout`/`full`/`lean-jvm`) with per-container mem limits, `proto/` + Buf.
+- [x] **v0.2 — Read path + MELT**: Catalogue (Go), BFF (TS), Cart (Node/Redis), Users (Python) **+ Frontend** (Next.js 15 NEXUS storefront — home · shop · PDP · cart · account) — all **MELT-complete, verified correlated**. **5/11.**
+- [x] **v0.3 — Write path + checkout saga**: **Orders** (Java/Spring), **Payment** (Rust), **Inventory** (Go), **Notification** (Go) over **NATS JetStream** — the checkout saga is **one correlated trace** across the async hops (reserve → authorize → confirm → notify, with compensation). **9/11 MELT-complete.**
+- [x] **Chaos & incidents (v0)**: `tools/incident-simulator` — Compose-native fault injection (4 methods), **5 labeled, reproducible scenarios** verified correlated live, schema-v0 records + Grafana annotations.
+- [x] **Incident dataset (the product)**: `tools/trace-labeler` exports the correlated MELT slice per labeled window into a versioned **JSONL corpus** (`docs/dataset/exports/`). **The product loop — storefront → MELT → labeled incidents → trainable dataset — is closed end-to-end.**
+
+> **The pivot ([ADR-0002](docs/adr/ADR-0002-melt-four-signal-telemetry-as-product.md)).** Partway through, the project re-centred on its real product — the labeled, correlated MELT corpus — and **beelined to it**, deliberately **deferring** the cluster / mesh / CI-signing / ML / observability-depth layers from the original arc. Those remain below as optional, post-product work.
+
+- [ ] **Realism**: finish the 2 stub services — **shipping** (Kotlin/Ktor), **recommendation** (Python/ONNX) — and integrate **Zitadel** auth (single demo identity today).
+- [ ] **Corpus depth**: multi-fault / combined scenarios, SLO / error-budget framing, more service classes per injection method.
+- [ ] **Observability depth**: dashboards-as-code, SLOs (Sloth), Beyla eBPF safety net, separated LGTM+P / Mimir, two-tier Collector.
+- [ ] **Cluster path**: k3d / Helm / Argo CD / Istio Ambient; CI build·test·scan·SBOM·Cosign signing; GA Helm chart on Artifact Hub.
+- [ ] **Project 2 — the AI SRE**: trained on the exported `(telemetry, root_cause)` corpus. The reason the dataset exists.
 
 ---
 
