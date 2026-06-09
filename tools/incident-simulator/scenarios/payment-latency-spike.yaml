@@ -1,7 +1,7 @@
 # Scenario manifest — payment latency spike.
 #
-# The deterministic analog of Sock Shop's "Incident 6 — Payment Gateway Timeout"
-# (there: a slow stripe-mock). Here we inject a fixed processing delay into the
+# A deterministic payment-gateway-timeout incident. Here we inject a fixed
+# processing delay into the
 # Payment simulator (PAYMENT_LATENCY_MS) so every authorization takes ~1.5s.
 # Payments still SUCCEED (orders reach CONFIRMED), but the async fulfilment is
 # slow: the payment span and payment.duration histogram balloon, inflating the

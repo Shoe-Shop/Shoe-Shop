@@ -1117,16 +1117,16 @@ with the captured `time_window` + `order_ids` + load stats, and posts a Grafana
 ship, all verified correlated live in the LGTM bundle:**
 - **`payment-hard-decline`** (env-knob, `PAYMENT_FAILURE_RATE=1.0`) → every order
   declined → CANCELLED; `payment_requests_total{result="declined"}`=5 + per-order
-  `payment.declined` WARN logs carrying the saga `trace_id`. ≈ Sock Shop #3.
+  `payment.declined` WARN logs carrying the saga `trace_id`. *(payment-transaction-failure class.)*
 - **`payment-latency-spike`** (env-knob, `PAYMENT_LATENCY_MS=1500`) → orders still
-  CONFIRMED but mean `payment_duration_seconds` ≈ 1.51s. ≈ Sock Shop #6.
+  CONFIRMED but mean `payment_duration_seconds` ≈ 1.51s. *(payment-gateway-timeout class.)*
 - **`notification-down`** (compose-stop) → orders CONFIRM but no notice is sent;
   the silent fan-out failure (metrics flat, no `notification.sent`), and on
-  recovery the durable consumer drains the backlog. ≈ Sock Shop #5.
+  recovery the durable consumer drains the backlog. *(async-processing-failure class.)*
 - **`catalogue-db-throttle`** (resource-limit, Postgres → 0.1 CPU + browse load) →
-  catalogue `rpc_server_duration` p99 ≈ 96ms (10× baseline), no crash. ≈ Sock Shop #8.
+  catalogue `rpc_server_duration` p99 ≈ 96ms (10× baseline), no crash. *(database-performance-degradation class.)*
 - **`checkout-load-spike`** (load, 12 workers × 80s browse/search) → read-path
-  rate/latency climb (≈ 517 rps), system stays up. ≈ Sock Shop #4.
+  rate/latency climb (≈ 517 rps), system stays up. *(pure-application-latency class.)*
 
 Two gotchas baked in: (1) an incident window is often shorter than the default 60s
 OTLP metric-export interval, so for `env-knob` the simulator injects a short
@@ -1236,7 +1236,7 @@ trace anchor is `order.id → Tempo`, not exemplars. See memory `trace-labeler-e
   [`docs/dataset/`](docs/dataset/) schema into `docs/dataset/incidents/`; the
   `chaos:run` task stub is filled and the `injection_method` enum is fixed. **All
   four injection methods wired** (`env-knob`, `compose-stop`, `resource-limit`,
-  `load`) across **five scenarios** mapping to Sock Shop incidents 3/6/5/8/4, each
+  `load`) across **five scenarios** spanning five canonical incident classes, each
   posting a Grafana region annotation and all verified correlated live (§10).
 - **Dataset export pipeline (done):** ✅ [`tools/trace-labeler/`](tools/trace-labeler/)
   (`task dataset:export`) — extracts the correlated MELT slice for each labeled

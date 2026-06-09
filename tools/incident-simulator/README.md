@@ -32,7 +32,7 @@ task chaos:run -- payment-latency-spike
 
 Each run mints the next `incident-NNNN-<scenario>.yaml` under
 `docs/dataset/incidents/` with the real `time_window` + `order_ids`. Verify the
-window in Grafana / Tempo / Loki / Mimir using **absolute** time bounds.
+window in Grafana / Tempo / Loki / Prometheus using **absolute** time bounds.
 
 ## Scenarios
 
@@ -41,13 +41,13 @@ to drive, and the static `label` fields (root cause, expected symptoms,
 remediation). The simulator fills the runtime fields (window, order ids, load
 stats). Shipped:
 
-| Scenario | Method | Fault | Sock Shop analog |
-|----------|--------|-------|------------------|
-| `payment-hard-decline` | env-knob | `PAYMENT_FAILURE_RATE=1.0` → every order declined → CANCELLED | #3 Payment Transaction Failure |
-| `payment-latency-spike` | env-knob | `PAYMENT_LATENCY_MS=1500` → slow authorizations inflate the saga | #6 Payment Gateway Timeout |
-| `notification-down` | compose-stop | stop the Notification worker → orders confirm but no notice is sent (silent fan-out failure) | #5 Async Processing Failure |
-| `catalogue-db-throttle` | resource-limit | cap Postgres to 0.1 CPU under browse load → product-listing latency climbs | #8 Database Performance Degradation |
-| `checkout-load-spike` | load | concurrent browse/search burst → read-path latency climbs (no fault injected) | #4 Pure Application Latency |
+| Scenario | Method | Fault | Incident class |
+|----------|--------|-------|----------------|
+| `payment-hard-decline` | env-knob | `PAYMENT_FAILURE_RATE=1.0` → every order declined → CANCELLED | Payment transaction failure |
+| `payment-latency-spike` | env-knob | `PAYMENT_LATENCY_MS=1500` → slow authorizations inflate the saga | Payment gateway timeout |
+| `notification-down` | compose-stop | stop the Notification worker → orders confirm but no notice is sent (silent fan-out failure) | Async processing failure |
+| `catalogue-db-throttle` | resource-limit | cap Postgres to 0.1 CPU under browse load → product-listing latency climbs | Database performance degradation |
+| `checkout-load-spike` | load | concurrent browse/search burst → read-path latency climbs (no fault injected) | Pure application latency |
 
 ## Injection methods
 

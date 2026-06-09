@@ -1,7 +1,7 @@
 # Scenario manifest — payment hard-decline.
 #
-# The deterministic analog of Sock Shop's "Incident 3 — Payment Transaction
-# Failure" (there: scale payment to 0 -> connection-refused -> PAYMENT_FAILED).
+# A deterministic payment-transaction-failure incident (every authorization
+# refused at the gateway).
 # Here we set the Payment simulator's failure rate to 1.0, so EVERY authorization
 # is declined ("do_not_honor"); the Orders saga then compensates (release the
 # inventory reservation) and the order ends CANCELLED. Reproducible by

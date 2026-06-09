@@ -1,6 +1,6 @@
 # Shoe Shop — Dual-Path task runner (https://taskfile.dev)
 #
-# Two paths, one interface (see README → ADR-0001):
+# Two paths, one interface (see docs/adr/ADR-0001):
 #   • Hybrid dev   →  `task dev`     (infra+obs in Docker, edited services native)
 #   • Full compose →  `task up:*`    (everything containerized)
 #
@@ -81,7 +81,7 @@ tasks:
       - task: obs
 
   up:core:
-    desc: "Start platform + the 7 CORE services (default daily profile)"
+    desc: "Start platform + the 5 read-path CORE services (default daily profile)"
     deps: [_ensure-env]
     cmds:
       - docker compose {{.ENVFILE}} {{.BASE}} {{.CORE}} up -d --remove-orphans

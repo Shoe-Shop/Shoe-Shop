@@ -42,7 +42,7 @@ evidence.
   - **`env-knob`** — set a service env var and recreate its container (e.g. the
     Payment simulator's `PAYMENT_FAILURE_RATE` / `PAYMENT_LATENCY_MS`). ✅ wired.
   - **`compose-stop`** — stop a container outright (service-down faults; the
-    Compose analog of Sock Shop's "scale to 0", e.g. the Notification worker). ✅ wired.
+    Compose analog of a Kubernetes "scale to 0", e.g. the Notification worker). ✅ wired.
   - **`resource-limit`** — pin a legacy `cpus` cap via an override + recreate to
     starve a service (DB-throttle faults; e.g. Postgres). ✅ wired.
   - **`load`** — drive excess storefront traffic (saturation faults); the load

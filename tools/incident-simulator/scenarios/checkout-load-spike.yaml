@@ -1,7 +1,7 @@
 # Scenario manifest — read-path traffic spike.
 #
-# The analog of Sock Shop's "Incident 4 — Pure Application Latency" (500 users,
-# slow but no crashes). Here a burst of concurrent product browse + search
+# A pure-application-latency incident (heavy concurrent load, slow but no
+# crashes). Here a burst of concurrent product browse + search
 # traffic drives the read path (BFF -> Catalogue -> Postgres/Meilisearch) to
 # elevated latency. No fault is injected — the LOAD is the incident. The system
 # stays up but RED duration rises under the spike: the early-warning class that

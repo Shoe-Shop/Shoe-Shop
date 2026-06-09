@@ -1,8 +1,8 @@
 # Scenario manifest — catalogue database CPU starvation.
 #
-# The analog of Sock Shop's "Incident 8 — Database Performance Degradation"
-# (there: catalogue-db CPU capped to 50m → slow queries → circuit breaker). Here
-# we live-throttle Postgres to 0.1 CPU while driving product-browse load, so the
+# A database-performance-degradation incident (the catalogue's database is
+# starved of CPU → slow queries).
+# Here we live-throttle Postgres to 0.1 CPU while driving product-browse load, so the
 # Catalogue service's ListProducts SELECTs queue on the starved DB: product
 # listing latency climbs, nothing crashes (Running, not OOMKilled) — the
 # throttle-not-crash class.

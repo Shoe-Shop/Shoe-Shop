@@ -156,7 +156,7 @@ each born MELT-complete:
 `docs/dataset/incidents/` (captured `time_window` + `order_ids` + load stats) and
 posting a Grafana region annotation per window. Fills the old `chaos:run` stub;
 the `injection_method` enum is fixed with **all four methods wired**. **Five
-scenarios, all verified correlated live (absolute windows), ≈ Sock Shop 3/6/5/8/4:**
+scenarios, all verified correlated live (absolute windows), spanning five canonical incident classes:**
 - **payment-hard-decline** (`env-knob` `PAYMENT_FAILURE_RATE=1.0`) → all CANCELLED;
   `payment_requests_total{result="declined"}`=5 + `payment.declined` WARN logs.
 - **payment-latency-spike** (`env-knob` `PAYMENT_LATENCY_MS=1500`) → mean

@@ -12,7 +12,7 @@ By participating, you agree to uphold our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 | Tool | Why | Notes |
 |------|-----|-------|
-| **Docker Desktop** (WSL2 backend on Windows) | Runs the whole stack | Reference budget: 8 GB allocated to WSL2 — see [README → ADR-0001](README.md) |
+| **Docker Desktop** (WSL2 backend on Windows) | Runs the whole stack | Reference budget: 8 GB allocated to WSL2 — see [ADR-0001](docs/adr/ADR-0001-local-dev-and-resource-constraints.md) |
 | **[Task](https://taskfile.dev)** (`task` CLI) | The single command interface | `winget install Task.Task` / `brew install go-task` |
 | **Git** | Version control | Configure your name + email before committing |
 
@@ -43,7 +43,7 @@ Then open Grafana at <http://localhost:3000>. Tear down with `task down`
 
 ## The two development paths
 
-Shoe Shop ships a **Dual-Path** workflow (see [README → ADR-0001](README.md)):
+Shoe Shop ships a **Dual-Path** workflow (see [ADR-0001](docs/adr/ADR-0001-local-dev-and-resource-constraints.md)):
 
 | Path | Command | When |
 |------|---------|------|
@@ -80,7 +80,7 @@ Nothing else in the topology changes.
 ### Architectural changes need an ADR first
 Anything that changes a boundary, protocol, datastore, or a core tool gets a
 short **Architecture Decision Record** under `docs/adr/NNNN-title.md` before
-the implementation PR. ADR-0001 (in the README) is the template to follow.
+the implementation PR. The existing records in [`docs/adr/`](docs/adr/) are the template to follow.
 
 ### Commits — [Conventional Commits](https://www.conventionalcommits.org)
 Format: `type(scope): summary`

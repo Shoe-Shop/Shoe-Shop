@@ -145,8 +145,8 @@ def inject(fault: dict) -> None:
         # refuses to mix `mem_limit` with `deploy.resources.limits` on one service.
         # `docker update --cpus` was rejected too (it sets NanoCpus, which cannot
         # be cleared again — `--cpus 0` is ignored); recreating WITHOUT the
-        # override restores NanoCpus=0 by construction. Faithful to Sock Shop #8,
-        # which recreates the pod via `kubectl set resources`.
+        # override restores NanoCpus=0 by construction. Mirrors a Kubernetes
+        # `kubectl set resources` recreate of a CPU-capped pod.
         cpus = float(params.get("cpus", "0.1"))
         override = {"services": {target: {"cpus": cpus}}}
         GEN_OVERRIDE.write_text(yaml.safe_dump(override, sort_keys=False))

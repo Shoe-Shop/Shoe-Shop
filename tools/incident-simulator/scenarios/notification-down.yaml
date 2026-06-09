@@ -1,8 +1,8 @@
 # Scenario manifest — notification worker down (silent fulfilment failure).
 #
-# The analog of Sock Shop's "Incident 5 — Async Processing Failure" (there:
-# queue-master scaled to 0; messages pile up in RabbitMQ, orders succeed but
-# never ship). Here we stop the Notification worker — a durable JetStream
+# An async-processing-failure incident (a downstream queue consumer goes away;
+# events pile up, orders succeed but the follow-on action never runs).
+# Here we stop the Notification worker — a durable JetStream
 # consumer on the terminal orders.confirmed/orders.cancelled events. Orders still
 # complete normally (the saga does not depend on Notification), but no notice is
 # "sent": a SILENT failure with no user-facing error. On recovery the durable
