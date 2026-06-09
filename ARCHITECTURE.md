@@ -294,8 +294,9 @@ services/payment/             # Payment (Rust · Axum + NATS saga · determinist
 
 - **Prereqs:** Docker Desktop (WSL2). The `task` CLI. Nothing else is required —
   all language/codegen toolchains run in containers.
-- **Profiles (RAM dial):** `core` (7 svc, default — incl. all 4 real services),
-  `full` (11 + Zitadel), `lean-jvm` (capped JVM heaps).
+- **Profiles (RAM dial):** `core` (5 read-path svc, default), `checkout`
+  (core + the 4-service NATS write path), `full` (all 11 + Zitadel),
+  `lean-jvm` (capped JVM heaps).
 - **Dual path:** `task dev` (Hybrid — infra in Docker, edited service native)
   vs `task up:core` / `up:full` (everything containerized).
 - **Common:** `task up:core`, `task ps`, `task logs -- <svc>`, `task down`,
@@ -311,8 +312,10 @@ services/payment/             # Payment (Rust · Axum + NATS saga · determinist
   silently miss recently-written data.
 
 Measured footprint: `core` profile idles around **~0.9 GB** total (measured
-~0.92 GB with all 7 services up — Users adds ~60 MiB; otel-lgtm is still ~70% of
-the total); well within an 8 GB WSL2 budget.
+~0.92 GB with all 5 read-path services up; otel-lgtm is ~70% of the total). The
+full `checkout` stack (14 containers, incl. the JVM Orders service) idles at
+**~1.2 GB** — both well within an 8 GB WSL2 budget. Per-container `mem_limit`s
+keep usage bounded under load (ADR-0001).
 
 ---
 
