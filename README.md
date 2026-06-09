@@ -256,7 +256,7 @@ To run the full checkout saga (Orders + Inventory + Payment + Notification over 
 task up:checkout  # read path + the v0.3 write path
 ```
 
-> **The RAM dial.** Shoe Shop is resource-first — it targets a 16 GB laptop with Docker capped at ~8 GB. `core` idles light (~0.9 GB); the JVM-heavy write path is the opt-in `checkout` overlay so daily dev stays lean.
+> **The RAM dial.** Shoe Shop is resource-first and lighter than it looks: `core` idles at **~0.9 GiB** and the *entire* checkout stack (14 containers) idles at **~1.2 GiB** of actual RAM. Every container has a hard memory limit, so usage stays bounded under load. It runs comfortably in an ~8 GiB Docker allocation (and `core` in far less); 16 GiB is just the reference laptop it's designed not to exceed, not a requirement.
 
 Everyday commands:
 
